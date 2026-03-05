@@ -1,0 +1,260 @@
+
+# Sending Request: Tester -> 1D12 14 FF FF FF :\ HPA_APP_32442848 AA \ Clear Diagnostic Information \ All groups
+
+Tester -> 1D12 14 FF FF FF :\ HPA_APP_32442848 AA \ Clear Diagnostic Information \ All groups
+Complete Response: 1D12 54
+Time stamp: 1211918093
+Time between request and response(P2 time): 23 ms
+
+DTCs Cleared
+
+
+# Sending Request: Tester -> 1D12 19 02 2F :\ HPA_APP_32442848 AA \ Read DTC Information \ Report DTC By Status Mask
+
+Tester -> 1D12 19 02 2F :\ HPA_APP_32442848 AA \ Read DTC Information \ Report DTC By Status Mask
+Complete Response: 1D12 59 02 FF C0 E1 8C 27 21 20 84 27 21 25 84 27 21 20 08 27 21 25 08 27 2D 77 8C 27 D5 0A 54 2F D5 09 54 2F D5 0B 54 2F D5 0C 54 2F D4 D5 54 2F 45 97 8C AF C8 4E 8C AF E3 00 51 2F C8 50 95 27 C8 48 95 27 27 FC 95 27
+Time stamp: 1211921406
+Time between request and response(P2 time): 8 ms
+
+FF			DTC Status Availability Mask
+
+
+
+
+
+
+
+
+
+
+
+
+
+D50A54		Short Range Camera Front (SRCF)- System Programming Failures- Missing calibration
+ 01			Test failed
+ 02			Test failed this monitoring/operational cycle
+ 04			Pending DTC
+ 08			Confirmed DTC
+ 20			Test failed since last clear
+
+
+
+D50954		Short Range Camera Back (SRCB)- System Programming Failures- Missing calibration
+ 01			Test failed
+ 02			Test failed this monitoring/operational cycle
+ 04			Pending DTC
+ 08			Confirmed DTC
+ 20			Test failed since last clear
+
+
+
+D50B54		Short Range Camera Left (SRCL)- System Programming Failures- Missing calibration
+ 01			Test failed
+ 02			Test failed this monitoring/operational cycle
+ 04			Pending DTC
+ 08			Confirmed DTC
+ 20			Test failed since last clear
+
+
+
+D50C54		Short Range Camera Right (SRCR)- System Programming Failures- Missing calibration
+ 01			Test failed
+ 02			Test failed this monitoring/operational cycle
+ 04			Pending DTC
+ 08			Confirmed DTC
+ 20			Test failed since last clear
+
+
+
+D4D554		Forward Looking Camera Wide range (FLCW)- System Programming Failures- Missing calibration
+ 01			Test failed
+ 02			Test failed this monitoring/operational cycle
+ 04			Pending DTC
+ 08			Confirmed DTC
+ 20			Test failed since last clear
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Sending Request: Tester -> 1D12 27 21 00 01 00 01 56 05 40 58 98 33 A3 1A 88 DA 09 C6 6B 0D 63 58 4B 76 34 4C 5C 75 3B 5C F0 27 B5 05 B4 F6 84 97 D4 93 11 C2 B9 4C D4 38 3D 03 8B BB D9 E2 04 F5 HPA
+
+Tester -> 1D12 27 21 00 01 00 01 56 05 40 58 98 33 A3 1A 88 DA 09 C6 6B 0D 63 58 4B 76 34 4C 5C 75 3B 5C F0 27 B5 05 B4 F6 84 97 D4 93 11 C2 B9 4C D4 38 3D 03 8B BB D9 E2 04 F5 HPA
+Complete Response: 1D12 67 21 00 02 0F 84 C0 ED 53 9D 45 EF 69 60 F3 C2 C5 16 4B 64 40 7E DC 66 C3 22 05 62 9B 42 C5 6E BC 13 C3 97 D6 19 A5 C1 06 FF 96 80 2E A6 D2 AE C6 05 09 D0 55 42 D6 7B 28 CC D5 CA 98 02 46 FD E6 AF C9 EE
+Time stamp: 1211941437
+Time between request and response(P2 time): 14 ms
+
+
+
+# Sending Request: Tester -> 1D12 27 22 00 03 5C ED 5D 78 1D F5 A3 9A 0B C3 CA CE 9B 3D B8 A6 D0 FF C5 5E 59 3A 70 75 17 26 96 0F 05 1F 4B 34 2D BB 6B E5 91 04 19 4E EE 63 51 74 E1 7A CE D6 HPA
+
+Tester -> 1D12 27 22 00 03 5C ED 5D 78 1D F5 A3 9A 0B C3 CA CE 9B 3D B8 A6 D0 FF C5 5E 59 3A 70 75 17 26 96 0F 05 1F 4B 34 2D BB 6B E5 91 04 19 4E EE 63 51 74 E1 7A CE D6 HPA
+Complete Response: 1D12 67 22
+Time stamp: 1211943515
+Time between request and response(P2 time): 13 ms
+
+
+
+# Sending Request: Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+
+Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+Complete Response: 1D12 62 D9 31 00 00 07 1E 01 01 01 01 01 01 00 01
+Time stamp: 1211948484
+Time between request and response(P2 time): 4 ms
+
+timestamp: 30.366667 min
+short_range_camera_right_power_status: 00000001 Power on
+short_range_camera_left_power_status: 00000001 Power on
+short_range_camera_front_power_status: 00000001 Power on
+short_range_camera_back_power_status: 00000001 Power on
+driver_monitor_camera_dim_power_status: 00000001 Power on
+driver_monitor_camera_ip_power_status: 00000001 Power on
+void_power_status: 00000000 POWEROFF
+Front_Look_Camera_Wide_Power_Status: 00000001 Power on
+
+
+
+# Sending Request: Tester -> 1D12 2F D9 31 03 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Short Term Adjustment
+
+Tester -> 1D12 2F D9 31 03 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Short Term Adjustment
+Complete Response: 1D12 6F D9 31 03
+Time stamp: 1211956000
+Time between request and response(P2 time): 5 ms
+
+
+
+# Sending Request: Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+
+Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+Complete Response: 1D12 62 D9 31 00 00 07 2C 01 01 01 01 01 01 00 01
+Time stamp: 1211963265
+Time between request and response(P2 time): 2 ms
+
+timestamp: 30.6 min
+short_range_camera_right_power_status: 00000001 Power on
+short_range_camera_left_power_status: 00000001 Power on
+short_range_camera_front_power_status: 00000001 Power on
+short_range_camera_back_power_status: 00000001 Power on
+driver_monitor_camera_dim_power_status: 00000001 Power on
+driver_monitor_camera_ip_power_status: 00000001 Power on
+void_power_status: 00000000 POWEROFF
+Front_Look_Camera_Wide_Power_Status: 00000001 Power on
+
+
+
+# Sending Request: Tester -> 1D12 2F D9 31 03 00 00 00 00 01 01 01 01 01 01 00 00 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Short Term Adjustment
+
+Tester -> 1D12 2F D9 31 03 00 00 00 00 01 01 01 01 01 01 00 00 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Short Term Adjustment
+Complete Response: 1D12 6F D9 31 03
+Time stamp: 1211971703
+Time between request and response(P2 time): 4 ms
+
+
+
+# Sending Request: Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+
+Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+Complete Response: 1D12 62 D9 31 00 00 07 3A 01 01 01 01 01 01 00 00
+Time stamp: 1211976906
+Time between request and response(P2 time): 4 ms
+
+timestamp: 30.833333 min
+short_range_camera_right_power_status: 00000001 Power on
+short_range_camera_left_power_status: 00000001 Power on
+short_range_camera_front_power_status: 00000001 Power on
+short_range_camera_back_power_status: 00000001 Power on
+driver_monitor_camera_dim_power_status: 00000001 Power on
+driver_monitor_camera_ip_power_status: 00000001 Power on
+void_power_status: 00000000 POWEROFF
+Front_Look_Camera_Wide_Power_Status: 00000000 POWEROFF
+
+
+
+# Sending Request: Tester -> 1D12 2F D9 31 03 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Short Term Adjustment
+
+Tester -> 1D12 2F D9 31 03 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Short Term Adjustment
+Complete Response: 1D12 6F D9 31 03
+Time stamp: 1211983359
+Time between request and response(P2 time): 4 ms
+
+
+
+# Sending Request: Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+
+Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+Complete Response: 1D12 62 D9 31 00 00 07 45 01 01 01 01 01 01 00 00
+Time stamp: 1211987921
+Time between request and response(P2 time): 4 ms
+
+timestamp: 31.016667 min
+short_range_camera_right_power_status: 00000001 Power on
+short_range_camera_left_power_status: 00000001 Power on
+short_range_camera_front_power_status: 00000001 Power on
+short_range_camera_back_power_status: 00000001 Power on
+driver_monitor_camera_dim_power_status: 00000001 Power on
+driver_monitor_camera_ip_power_status: 00000001 Power on
+void_power_status: 00000000 POWEROFF
+Front_Look_Camera_Wide_Power_Status: 00000000 POWEROFF
+
+
+
+# Sending Request: Tester -> 1D12 2F D9 31 00 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Return Control to ECU
+
+Tester -> 1D12 2F D9 31 00 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Return Control to ECU
+Complete Response: 1D12 6F D9 31 00
+Time stamp: 1211999796
+Time between request and response(P2 time): 4 ms
+
+
+
+# Sending Request: Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+
+Tester -> 1D12 22 D9 31 :\ HPA_APP_32442848 AA \ Read Data By Identifier \ Cameras Power Switch Enable Status
+Complete Response: 1D12 62 D9 31 00 00 07 56 01 01 01 01 01 01 00 00
+Time stamp: 1212005109
+Time between request and response(P2 time): 4 ms
+
+timestamp: 31.3 min
+short_range_camera_right_power_status: 00000001 Power on
+short_range_camera_left_power_status: 00000001 Power on
+short_range_camera_front_power_status: 00000001 Power on
+short_range_camera_back_power_status: 00000001 Power on
+driver_monitor_camera_dim_power_status: 00000001 Power on
+driver_monitor_camera_ip_power_status: 00000001 Power on
+void_power_status: 00000000 POWEROFF
+Front_Look_Camera_Wide_Power_Status: 00000000 POWEROFF
+
+
+
+# Sending Request: Tester -> 1D12 2F D9 31 02 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Freeze Current State
+
+Tester -> 1D12 2F D9 31 02 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Freeze Current State
+Complete Response: 1D12 7F 2F 31
+Time stamp: 1212025140
+Time between request and response(P2 time): 4 ms
+
+
+ERROR: requestOutOfRange
+
+
+# Sending Request: Tester -> 1D12 2F D9 31 02 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Freeze Current State
+
+Tester -> 1D12 2F D9 31 02 00 00 00 00 01 01 01 01 01 01 00 01 :\ HPA_APP_32442848 AA \ Input Output Control By Identifier \ Cameras Power Switch Enable Status \ Freeze Current State
+Complete Response: 1D12 7F 2F 31
+Time stamp: 1212036359
+Time between request and response(P2 time): 5 ms
+
+
+ERROR: requestOutOfRange
