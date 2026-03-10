@@ -10,12 +10,12 @@ def require_env(var_name: str) -> str:
     return value
 
 # PATs
-CONFLUENCE_PAT = "YOUR PAT HERE"
-VIRA_PAT = "YOUR PAT HERE"
+CONFLUENCE_PAT = "YOUR_CONFLUENCE_PAT_HERE"
+VIRA_PAT = "YOUR_VIRA_PAT_HERE"
 
 # Base URLs
-CONFLUENCE_BASE = "YOUR PAT HERE"
-VIRA_BASE = "YOUR PAT HERE"
+CONFLUENCE_BASE = "https://confluence.volvocars.biz"
+VIRA_BASE = "https://jira-vira.volvocars.biz"
 
 # Confluence Page ID for Exovision WoW
 EXOVISION_PAGE_ID = "1037013667"
