@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Usage: see INSTRUCTIONS.md in this folder.
 from pathlib import Path
 import re
 
@@ -149,4 +150,10 @@ def filter_log_file(input_path: Path):
 
 
 if __name__ == "__main__":
-    filter_log_file(Path(INPUT_FILE))
+    input_path = Path(INPUT_FILE)
+    if not input_path.is_absolute():
+        script_dir = Path(__file__).resolve().parent
+        script_relative_path = script_dir / input_path
+        if script_relative_path.exists():
+            input_path = script_relative_path
+    filter_log_file(input_path)
