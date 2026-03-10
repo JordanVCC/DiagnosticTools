@@ -26,6 +26,7 @@ class ViraClient:
             "Content-Type": "application/json"
         }
         self._feature_fields_cache = {}
+        self._missing_feature_fields_cache = {}
 
     def _fetch_feature_fields(self, feature_key):
         if feature_key in self._feature_fields_cache:
@@ -68,9 +69,10 @@ class ViraClient:
             else:
                 copied[field_id] = value
 
+        self._missing_feature_fields_cache[feature_key] = missing
         if missing:
-            raise ViraClientError(
-                "Feature is missing required fields to copy into stories: "
+            print(
+                "[INFO] Feature is missing optional copied fields; skipping them: "
                 + ", ".join(missing)
             )
 
