@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# DID/DTC checker generated artifacts
+DidDtcGmrdbSyncStatusChecker/.manual_cs_extract/
+DidDtcGmrdbSyncStatusChecker/did_mapping_report.md
+DidDtcGmrdbSyncStatusChecker/did_mapping_report.html
+DidDtcGmrdbSyncStatusChecker/did_mapping_report.pdf
+did_mapping_report.md
