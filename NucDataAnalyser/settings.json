@@ -1,0 +1,22 @@
+{
+  "start_date": "2026-03-10",
+  "end_date": "2026-03-20",
+  "timestamp_column": "TS20__UTC",
+  "ecu_addresses": "1D12, 1D01",
+  "dtc_prefixes": "",
+  "discover_schema": false,
+  "dtc_repo_filter": true,
+  "run_durations": [
+    0.9563103999826126,
+    522.0361164000351,
+    1.0885102999745868,
+    0.8748521999805234,
+    0.7339984000427648
+  ],
+  "_schema_cache": {
+    "ts_col": "TS20__UTC",
+    "ts_col_dtype_code": "Datetime",
+    "has_vtstart": true,
+    "dtc_name_field": null
+  }
+}

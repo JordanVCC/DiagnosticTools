@@ -1,0 +1,7 @@
+adlfs
+azure-identity
+polars
+pyarrow
+pandas
+fsspec
+matplotlib

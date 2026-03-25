@@ -1,0 +1,93 @@
+dtc_id,description,autosar_name,platform
+500187,Failure to initialize the FLCW camera,HPA_VisionProcessing_VisionSystemCameraBusSignalMessageFailureMissingMessage,HPA
+500189,Event indicating that a change in blockage for the forward looking camera,HPA_VisionProcessing_VisionSystemCameraComponentFailuresComponentOrSystemOperationObstructedOrBlocked,HPA
+92BD87,Failure to initialize the SRCB camera,HPA_VisionProcessing_RearCameraBusSignalMessageFailureMissingMessage,HPA
+92BD89,Event indicating that a change in blockage for the short range camera behind,HPA_VisionProcessing_RearCameraComponentFailuresComponentOrSystemOperationObstructedOrBlocked,HPA
+92C087,Failure to initialize the SRCL camera,HPA_VisionProcessing_LeftMirrorCameraBusSignalMessageFailureMissingMessage,HPA
+92C187,Failure to initialize the SRCR camera,HPA_VisionProcessing_RightMirrorCameraBusSignalMessageFailureMissingMessage,HPA
+948587,Failure to initialize the SRCF camera,HPA_VIsionProcessing_FrontCameraBusSignalMessageFailureMissingMessage,HPA
+D14D46,Event indicating if a calibration has not been run for the SRCx cameras.,HPA_VisionProcessing_ParkingAssistCameraServiceSystemProgrammingFailuresNotConfigured,HPA
+D14D51,Event indicating if a calibration has not been successful on the SRCx cameras.,HPA_VisionProcessing_ParkingAssistCameraServiceSystemProgrammingFailuresMissingCalibration,HPA
+D14D54,Event indicating if a calibration has not been run for the SRCx cameras.,HPA_VisionProcessing_ParkingAssistCameraSystemProgrammingFailuresMissingCalibration,HPA
+D14D55,Event indicating if a calibration has not been successful on the SRCx cameras.,HPA_VisionProcessing_ParkingAssistCameraSystemProgrammingFailuresNotConfigured,HPA
+D14E54,Event indicating if a calibration has not been run for the LRBx cameras.,HPB_VisionProcessing_LongRangeBackCameraSystemProgrammingFailuresMissingCalibration,HPB
+D14E55,Event indicating if a calibration has not been successful on the LRBx cameras.,HPB_VisionProcessing_LongRangeBackCameraSystemProgrammingFailuresNotConfigured,HPB
+D4D454,Event indicating if a calibration has not been run for the FLCL cameras.,HPB_VisionProcessing_ForwardLookingCameraLongSystemProgrammingFailuresMissingCalibration,HPB
+D4D455,Event indicating if a calibration has not been successful on the FLCL cameras.,HPB_VisionProcessing_ForwardLookingCameraLongSystemProgrammingFailuresNotConfigured,HPB
+D4D50A,Event indicating that a camera failure was identified by HIA,HPA_VisionProcessing_ForwardLookingCameraWideGenericalEletricalFailures,HPA
+D4D50A,Event indicating that a hardware failure in the camera,HPA_VisionProcessing_ForwardLookingCameraWideGeneralElectricFailures,HPA
+D4D511,"Event indicating that there is a harness failure, short to ground",HPA_VisionProcessing_ForwardLookingCameraWideShortToGround,HPA
+D4D512,"Event indicating that there is a  harness failure, short to battery",HPA_VisionProcessing_ForwardLookingCameraWideShortToBattery,HPA
+D4D513,"Event indicating that there is a harness failure, open circuit",HPA_VisionProcessing_ForwardLookingCameraWideOpenCircuit,HPA
+D4D546,Event indicating if a calibration has not been run for the forward looking,HPA_VisionProcessing_VisionSystemCameraServiceSystemProgrammingFailuresNotConfigured,HPA
+D4D551,Event indicating if a calibration has not been successful on the forward,HPA_VisionProcessing_VisionSystemCameraServiceSystemProgrammingFailuresMissingCalibration,HPA
+D4D554,Event indicating if a calibration has not been run for the forward looking,HPA_VisionProcessing_VisionSystemCameraSystemProgrammingFailuresMissingCalibration,HPA
+D4D555,Event indicating if a calibration has not been successful on the forward,HPA_VisionProcessing_VisionSystemCameraSystemProgrammingFailuresNotConfigured,HPA
+D4D568,Event indicating that there is a system internal failure,HPA_VisionProcessing_ForwardLookingCameraWideEventInformationFailure,HPA
+D4D592,Event indicating that camera has a performance issues or incorrect operation,HPA_VisionProcessing_ForwardLookingCameraWidePerformanceOrIncorrectOperationFailure,HPA
+D4D593,Event indicating that camera has a no operation failure,HPA_VisionProcessing_ForwardlookingCameraWideNoOperationFailure,HPA
+D4D596,Event indicating that camera has a unexpected operation failure,HPA_VisionProcessing_ForwardLookingCameraWideComponentInternalFailure,HPA
+D4D598,Event indicating that camera is operating at over temperature,HPA_VisionProcessing_ForwardLookingCameraWideComponentOrSystemOverTemperatureFailure,HPA
+D4D59A,Event indicating that camera is having over voltage,HPA_VisionProcessing_ForwardLookingCameraWideComponentOrSystemOperatingConditionsFailure,HPA
+D4EE11,"Event indicating that there is a harness failure, short to ground",HPB_VisionProcessing_LongRangeCameraBackLeftShortToGround,HPB
+D4EE12,"Event indicating that there is a  harness failure, short to battery",HPB_VisionProcessing_LongRangeCameraBackLeftShortToBattery,HPB
+D4EE13,"Event indicating that there is a harness failure, open circuit",HPB_VisionProcessing_LongRangeCameraBackLeftOpenCircuit,HPB
+D4EF11,"Event indicating that there is a harness failure, short to ground",HPB_VisionProcessing_LongRangeCameraBackRightShortToGround,HPB
+D4EF12,"Event indicating that there is a  harness failure, short to battery",HPB_VisionProcessing_LongRangeCameraBackRightShortToBattery,HPB
+D4EF13,"Event indicating that there is a harness failure, open circuit",HPB_VisionProcessing_LongRangeCameraBackRightOpenCircuit,HPB
+D5090A,Event indicating that a camera failure was identified by HIA,HPA_VisionProcessing_ShortRangeCameraBackGenericalEletricalFailures,HPA
+D5090A,Event indicating that a hardware failure in the camera,HPA_VisionProcessing_ShortRangeCameraBackGeneralElectricFailures,HPA
+D50911,"Event indicating that there is a harness failure, short to ground",HPA_VisionProcessing_ShortRangeCameraBackShortToGround,HPA
+D50912,"Event indicating that there is a  harness failure, short to battery",HPA_VisionProcessing_ShortRangeCameraBackShortToBattery,HPA
+D50913,"Event indicating that there is a harness failure, open circuit",HPA_VisionProcessing_ShortRangeCameraBackOpenCircuit,HPA
+D50968,Event indicating that there is a system internal failure,HPA_VisionProcessing_ShortRangeCameraBackEventInformationFailure,HPA
+D50992,Event indicating that camera has a performance issues or incorrect operation,HPA_VisionProcessing_ShortRangeCameraBackPerformanceOrIncorrectOperationFailure,HPA
+D50993,Event indicating that camera has a no operation failure,HPA_VisionProcessing_ShortRangeCameraBackNoOperationFailure,HPA
+D50996,Event indicating that camera has a unexpected operation failure,HPA_VisionProcessing_ShortRangeCameraBackComponentInternalFailure,HPA
+D50998,Event indicating that camera is operating at over temperature,HPA_VisionProcessing_ShortRangeCameraBackComponentOrSystemOverTemperatureFailure,HPA
+D5099A,Event indicating that camera is having over voltage,HPA_VisionProcessing_ShortRangeCameraBackComponentOrSystemOperatingConditionsFailure,HPA
+D50A0A,Event indicating that a camera failure was identified by HIA,HPA_VisionProcessing_ShortRangeCameraFrontGenericalEletricalFailures,HPA
+D50A0A,Event indicating that a hardware failure in the camera,HPA_VisionProcessing_ShortRangeCameraFrontGeneralElectricFailures,HPA
+D50A11,"Event indicating that there is a harness failure, short to ground",HPA_VisionProcessing_ShortRangeCameraFrontShortToGround,HPA
+D50A12,"Event indicating that there is a  harness failure, short to battery",HPA_VisionProcessing_ShortRangeCameraFrontShortToBattery,HPA
+D50A13,"Event indicating that there is a harness failure, open circuit",HPA_VisionProcessing_ShortRangeCameraFrontOpenCircuit,HPA
+D50A68,Event indicating that there is a system internal failure,HPA_VisionProcessing_ShortRangeCameraFrontEventInformationFailure,HPA
+D50A92,Event indicating that camera has a performance issues or incorrect operation,HPA_VisionProcessing_ShortRangeCameraFrontPerformanceOrIncorrectOperationFailure,HPA
+D50A93,Event indicating that camera has a no operation failure,HPA_VisionProcessing_ShortRangeCameraFrontNoOperationFailure,HPA
+D50A96,Event indicating that camera has a unexpected operation failure,HPA_VisionProcessing_ShortRangeCameraFrontComponentInternalFailure,HPA
+D50A98,Event indicating that camera is operating at over temperature,HPA_VisionProcessing_ShortRangeCameraFrontComponentOrSystemOverTemperatureFailure,HPA
+D50A9A,Event indicating that camera is having over voltage,HPA_VisionProcessing_ShortRangeCameraFrontComponentOrSystemOperatingConditionsFailure,HPA
+D50B0A,Event indicating that a camera failure was identified by HIA,HPA_VisionProcessing_ShortRangeCameraLeftGenericalEletricalFailures,HPA
+D50B0A,Event indicating a hardware failure in the camera,HPA_VisionProcessing_ShortRangeCameraLeftGeneralElectricFailures,HPA
+D50B11,"Event indicating that there is a harness failure, short to ground",HPA_VisionProcessing_ShortRangeCameraLeftShortToGround,HPA
+D50B12,"Event indicating that there is a  harness failure, short to battery",HPA_VisionProcessing_ShortRangeCameraLeftShortToBattery,HPA
+D50B13,"Event indicating that there is a harness failure, open circuit",HPA_VisionProcessing_ShortRangeCameraLeftOpenCircuit,HPA
+D50B68,Event indicating that there is a system internal failure,HPA_VisionProcessing_ShortRangeCameraLeftEventInformationFailure,HPA
+D50B92,Event indicating that camera has a performance issues or incorrect operation,HPA_VisionProcessing_ShortRangeCameraLeftPerformanceOrIncorrectOperationFailure,HPA
+D50B93,Event indicating that camera has a no operation failure,HPA_VisionProcessing_ShortRangeCameraLeftNoOperationFailure,HPA
+D50B96,Event indicating that camera has a unexpected operation failure,HPA_VisionProcessing_ShortRangeCameraLeftComponentInternalFailure,HPA
+D50B98,Event indicating that camera is operating at over temperature,HPA_VisionProcessing_ShortRangeCameraLeftComponentOrSystemOverTemperatureFailure,HPA
+D50B9A,Event indicating that camera is having over voltage,HPA_VisionProcessing_ShortRangeCameraLeftComponentOrSystemOperatingConditionsFailure,HPA
+D50C0A,Event indicating that a camera failure was identified by HIA,HPA_VisionProcessing_ShortRangeCameraRightGenericalEletricalFailures,HPA
+D50C0A,Event indicating that a hardware failure in the camera,HPA_VisionProcessing_ShortRangeCameraRightGeneralElectricFailures,HPA
+D50C11,"Event indicating that there is a harness failure, short to ground",HPA_VisionProcessing_ShortRangeCameraRightShortToGround,HPA
+D50C12,"Event indicating that there is a  harness failure, short to battery",HPA_VisionProcessing_ShortRangeCameraRightShortToBattery,HPA
+D50C13,"Event indicating that there is a harness failure, open circuit",HPA_VisionProcessing_ShortRangeCameraRightOpenCircuit,HPA
+D50C68,Event indicating that there is a system internal failure,HPA_VisionProcessing_ShortRangeCameraRightEventInformationFailure,HPA
+D50C92,Event indicating that camera has a performance issues or incorrect operation,HPA_VisionProcessing_ShortRangeCameraRightPerformanceOrIncorrectOperationFailure,HPA
+D50C93,Event indicating that camera has a no operation failure,HPA_VisionProcessing_ShortRangeCameraRightNoOperationFailure,HPA
+D50C96,Event indicating that camera has a unexpected operation failure,HPA_VisionProcessing_ShortRangeCameraRightComponentInternalFailure,HPA
+D50C98,Event indicating that camera is operating at over temperature,HPA_VisionProcessing_ShortRangeCameraRightComponentOrSystemOverTemperatureFailure,HPA
+D50C9A,Event indicating that camera is having over voltage,HPA_VisionProcessing_ShortRangeCameraRightComponentOrSystemOperatingConditionsFailure,HPA
+EFA287,Failure to initialize the LRBL camera,HPA_VisionProcessing_LongRangeCamera1BusSignalMessageFailureMissingMessage,HPB
+EFA387,Failure to initialize the LRBR camera,HPA_VisionProcessing_LongRangeCamera2BusSignalMessageFailureMissingMessage,HPB
+EFA487,Event indicating that camera initialization has failed,HPA_VisionProcessing_ForwardLookingCameraWidePlatformBusSignalMessageFailureMissingMessage,HPA
+EFA587,Event indicating that camera initialization has failed,HPA_VisionProcessing_ShortRangeCameraPlatformBusSignalMessageFailureMissingMessage,HPA
+EFA687,Event indicating that camera initialization has failed,HPA_VisionProcessing_LongRangeCameraPlatformBusSignalMessageFailureMissingMessage,HPB
+EFB100,Lost Communication With Forward Looking Camera Wide,HPA_VisionProcessing_LostCommunicationWithForwardLookingCameraWide,HPA
+EFB200,Lost communication SRCF camera,HPA_VisionProcessing_LostCommunicationWithFrontShortRangeCamera,HPA
+EFB300,Lost communication SRCB camera,HPA_VisionProcessing_LostCommunicationWithRearShortRangeCamera,HPA
+EFB400,Lost communication SRCL camera,HPA_VisionProcessing_LostCommunicationWithLeftShortRangeCamera,HPA
+EFB500,Lost communication SRCR camera,HPA_VisionProcessing_LostCommunicationWithRightShortRangeCamera,HPA
+EFB600,Lost communication LRBL camera,HPA_VisionProcessing_LostCommunicationWithLeftLongRangeCamera,HPB
+EFB700,Lost communication LRBR camera,HPA_VisionProcessing_LostCommunicationWithRightLongRangeCamera,HPB

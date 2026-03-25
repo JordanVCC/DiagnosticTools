@@ -1,0 +1,15 @@
+ROWS: 3
+metainfo dtype: Struct({'430F_LPC_driving': Int64, 'F12A_HPA': String, 'READOUT_GLOBAL_TIME': String, 'READOUT_TOTAL_DISTANCE_KM': String, 'VCUv1': Boolean, 'consumer
+sw_dict dtype:  Struct({'1205/F120/application diagnostic database part number': String, '1205/F12A/ecu core assembly part number': String, '1205/F12B/ecu delivery as
+  row0 dtc_id='C8BF8C'  ecu='1D12'
+  row0 consumerswversion='00.00.000'
+  row0 metainfo="{'430F_LPC_driving': -10, 'F12A_HPA': '32442355', 'READOUT_GLOBAL_TIME': '156103597', 'READOUT_TOTAL_DISTANCE_KM': '2727"
+  row0 sw_dict="{'1205/F120/application diagnostic database part number': None, '1205/F12A/ecu core assembly part number': None, '1205/F"
+  row1 dtc_id='987487'  ecu='1205'
+  row1 consumerswversion='00.00.000'
+  row1 metainfo="{'430F_LPC_driving': -10, 'F12A_HPA': '32442355', 'READOUT_GLOBAL_TIME': '12794786', 'READOUT_TOTAL_DISTANCE_KM': '1141'"
+  row1 sw_dict="{'1205/F120/application diagnostic database part number': '32343000 AO', '1205/F12A/ecu core assembly part number': '323"
+  row2 dtc_id='F00068'  ecu='1D16'
+  row2 consumerswversion='00.00.000'
+  row2 metainfo="{'430F_LPC_driving': -10, 'F12A_HPA': '32442355', 'READOUT_GLOBAL_TIME': '17513223', 'READOUT_TOTAL_DISTANCE_KM': '24362"
+  row2 sw_dict="{'1205/F120/application diagnostic database part number': None, '1205/F12A/ecu core assembly part number': None, '1205/F"
