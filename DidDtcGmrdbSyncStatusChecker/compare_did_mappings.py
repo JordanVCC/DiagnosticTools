@@ -19,7 +19,6 @@ import sys
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from user_inputs import (
     CS_CONFIGURATION_PATH,
@@ -33,13 +32,18 @@ from user_inputs import (
     UPDATE_TO_LATEST,
 )
 
-# Mapping files requested by the user inside cs-software-product/configuration
-CS_MAPPING_FILES = (
-    "GMRDB_sync_config_hpagen3_ad.yaml",
-    "GMRDB_sync_config_hpagen3_adas.yaml",
-    "GMRDB_sync_config_hpagen4.yaml",
-    "GMRDB_sync_config_hpb.yaml",
+# Sync config definitions inside cs-software-product/configuration.
+# HPA diagnostics are checked against all three HPA configs.
+# HPB diagnostics are checked against the HPB config only.
+HPA_SYNC_CONFIGS: tuple[tuple[str, str], ...] = (
+    ("hpagen3_ad",   "GMRDB_sync_config_hpagen3_ad.yaml"),
+    ("hpagen3_adas", "GMRDB_sync_config_hpagen3_adas.yaml"),
+    ("hpagen4",      "GMRDB_sync_config_hpagen4.yaml"),
 )
+HPB_SYNC_CONFIG: tuple[str, str] = ("hpb", "GMRDB_sync_config_hpb.yaml")
+
+# All mapping file names (used for validation / archive inspection).
+CS_MAPPING_FILES = tuple(f for _, f in HPA_SYNC_CONFIGS) + (HPB_SYNC_CONFIG[1],)
 
 # Candidate file extensions to inspect in diagnostics repo manifests.
 CANDIDATE_EXTENSIONS = {
@@ -265,41 +269,48 @@ def collect_diagnostics_dids(
     return unique_entries
 
 
-def parse_cs_mappings(configuration_dir: Path) -> dict[str, MappingEntry]:
-    mappings: dict[str, MappingEntry] = {}
-    found_mapping_files = 0
+def parse_cs_mappings(configuration_dir: Path) -> dict[str, dict[str, MappingEntry]]:
+    """Return a per-sync-config dict of label→MappingEntry.
 
-    for file_name in CS_MAPPING_FILES:
+    Keys match the config identifiers defined in HPA_SYNC_CONFIGS and HPB_SYNC_CONFIG
+    (e.g. "hpagen3_ad", "hpagen3_adas", "hpagen4", "hpb").
+    """
+    all_configs = list(HPA_SYNC_CONFIGS) + [HPB_SYNC_CONFIG]
+    result: dict[str, dict[str, MappingEntry]] = {}
+    found_files = 0
+
+    for config_key, file_name in all_configs:
         file_path = configuration_dir / file_name
-        if not file_path.exists():
-            continue
-        found_mapping_files += 1
-
-        try:
-            lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
-
-        for idx, line in enumerate(lines, start=1):
-            match = YAML_MAPPING_RE.match(line)
-            if not match:
+        mappings: dict[str, MappingEntry] = {}
+        if file_path.exists():
+            found_files += 1
+            try:
+                lines = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                result[config_key] = mappings
                 continue
-            label = match.group(1).strip()
-            did = normalize_did(match.group(2))
-            if not did:
-                continue
-            # Keep first mapping if duplicates appear.
-            mappings.setdefault(
-                label,
-                MappingEntry(sw_label=label, mapped_did=did, source_file=f"configuration/{file_name}", source_line=idx),
-            )
 
-    if found_mapping_files == 0:
+            for idx, line in enumerate(lines, start=1):
+                match = YAML_MAPPING_RE.match(line)
+                if not match:
+                    continue
+                label = match.group(1).strip()
+                did = normalize_did(match.group(2))
+                if not did:
+                    continue
+                # Keep first mapping if duplicates appear.
+                mappings.setdefault(
+                    label,
+                    MappingEntry(sw_label=label, mapped_did=did, source_file=f"configuration/{file_name}", source_line=idx),
+                )
+        result[config_key] = mappings
+
+    if found_files == 0:
         raise RuntimeError(
             f"No GMRDB_sync_config_*.yaml files were found in: {configuration_dir}"
         )
 
-    return mappings
+    return result
 
 
 def manual_archive_rank(path: Path) -> tuple[int, str]:
@@ -360,7 +371,12 @@ def resolve_manual_configuration_dir(manual_download_dir: Path, work_dir: Path) 
     )
 
 
-def to_markdown_table(entries: Iterable[DidEntry], mappings: dict[str, MappingEntry]) -> str:
+def classify_entry(entry: DidEntry) -> str:
+    """Return 'hpb' if the entry originates from an HPB diagnostics file, else 'hpa'."""
+    return "hpb" if "hpb" in entry.source_file.lower() else "hpa"
+
+
+def build_report(entries: list[DidEntry], per_config_mappings: dict[str, dict[str, MappingEntry]]) -> str:
     def _table_header() -> list[str]:
         return [
             "| SW Label | Diagnostic DID (if present) | Mapped DID ID | Status | Diagnostic Source | Mapping Source |",
@@ -377,11 +393,7 @@ def to_markdown_table(entries: Iterable[DidEntry], mappings: dict[str, MappingEn
             f"| `{entry.sw_label}` | `{diag_did}` | `{mapped}` | {status} | {diag_src} | {map_src} |"
         )
 
-    def _diagnostics_group(entry: DidEntry) -> str:
-        parts = entry.source_file.split("/", 1)
-        return parts[0] if parts and parts[0] else "(root)"
-
-    def _mapped_did_sort_key(entry: DidEntry) -> tuple[int, int, str]:
+    def _mapped_did_sort_key(entry: DidEntry, mappings: dict[str, MappingEntry]) -> tuple[int, int, str]:
         mapping = mappings.get(entry.sw_label)
         if not mapping:
             return (1, 2**31 - 1, entry.sw_label.lower())
@@ -393,44 +405,67 @@ def to_markdown_table(entries: Iterable[DidEntry], mappings: dict[str, MappingEn
                 return (1, 2**31 - 1, entry.sw_label.lower())
         return (1, 2**31 - 1, entry.sw_label.lower())
 
-    sorted_entries = sorted(entries, key=lambda e: ( _diagnostics_group(e).lower(), e.sw_label.lower()))
-    total = len(sorted_entries)
-    missing_entries = [e for e in sorted_entries if e.sw_label not in mappings]
-    missing_count = len(missing_entries)
+    hpa_entries = sorted(
+        [e for e in entries if classify_entry(e) == "hpa"],
+        key=lambda e: e.sw_label.lower(),
+    )
+    hpb_entries = sorted(
+        [e for e in entries if classify_entry(e) == "hpb"],
+        key=lambda e: e.sw_label.lower(),
+    )
 
-    report_sections: list[str] = []
-
-    header = [
+    report_sections: list[str] = [
         "# DID Mapping Verification Report",
         "",
-        f"- Total DID software labels in diagnostics repo: **{total}**",
-        f"- Missing mappings in cs-software product repo: **{missing_count}**",
+        f"- Total DID software labels found: **{len(entries)}** "
+        f"({len(hpa_entries)} HPA, {len(hpb_entries)} HPB)",
         "",
     ]
 
-    report_sections.extend(header)
+    # HPA section — one table per HPA sync config
+    if hpa_entries:
+        report_sections += ["## HPA Diagnostics", ""]
+        for config_key, _ in HPA_SYNC_CONFIGS:
+            mappings = per_config_mappings.get(config_key, {})
+            missing_count = sum(1 for e in hpa_entries if e.sw_label not in mappings)
+            report_sections.append(f"### Sync Config: `{config_key}`")
+            report_sections.append("")
+            report_sections.append(f"Missing: **{missing_count}** / {len(hpa_entries)}")
+            report_sections.append("")
+            report_sections.extend(_table_header())
+            missing_list = sorted(
+                [e for e in hpa_entries if e.sw_label not in mappings],
+                key=lambda e: e.sw_label.lower(),
+            )
+            mapped_list = sorted(
+                [e for e in hpa_entries if e.sw_label in mappings],
+                key=lambda e, m=mappings: _mapped_did_sort_key(e, m),
+            )
+            for entry in missing_list + mapped_list:
+                report_sections.append(_table_row(entry, mappings.get(entry.sw_label)))
+            report_sections.append("")
 
-    report_sections.append("## Grouped By Diagnostics Folder")
-    report_sections.append("")
-
-    grouped: dict[str, list[DidEntry]] = {}
-    for entry in sorted_entries:
-        grouped.setdefault(_diagnostics_group(entry), []).append(entry)
-
-    for folder in sorted(grouped.keys(), key=str.lower):
-        report_sections.append(f"### `{folder}`")
+    # HPB section — one table using HPB sync config only
+    if hpb_entries:
+        hpb_key = HPB_SYNC_CONFIG[0]
+        hpb_mappings = per_config_mappings.get(hpb_key, {})
+        missing_count = sum(1 for e in hpb_entries if e.sw_label not in hpb_mappings)
+        report_sections += ["## HPB Diagnostics", ""]
+        report_sections.append(f"### Sync Config: `{hpb_key}`")
+        report_sections.append("")
+        report_sections.append(f"Missing: **{missing_count}** / {len(hpb_entries)}")
         report_sections.append("")
         report_sections.extend(_table_header())
-        missing_in_group = sorted(
-            [e for e in grouped[folder] if e.sw_label not in mappings],
+        missing_list = sorted(
+            [e for e in hpb_entries if e.sw_label not in hpb_mappings],
             key=lambda e: e.sw_label.lower(),
         )
-        mapped_in_group = sorted(
-            [e for e in grouped[folder] if e.sw_label in mappings],
-            key=_mapped_did_sort_key,
+        mapped_list = sorted(
+            [e for e in hpb_entries if e.sw_label in hpb_mappings],
+            key=lambda e, m=hpb_mappings: _mapped_did_sort_key(e, m),
         )
-        for entry in missing_in_group + mapped_in_group:
-            report_sections.append(_table_row(entry, mappings.get(entry.sw_label)))
+        for entry in missing_list + mapped_list:
+            report_sections.append(_table_row(entry, hpb_mappings.get(entry.sw_label)))
         report_sections.append("")
 
     return "\n".join(report_sections) + "\n"
@@ -492,16 +527,16 @@ def main() -> int:
                 "Adjust INCLUDE_PATH_REGEX in user_inputs.py if manifests use a different path pattern."
             )
 
-        mappings = parse_cs_mappings(configuration_dir)
-        report = to_markdown_table(did_entries, mappings)
+        per_config_mappings = parse_cs_mappings(configuration_dir)
+        report = build_report(did_entries, per_config_mappings)
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text(report, encoding="utf-8")
 
-        missing = sum(1 for e in did_entries if e.sw_label not in mappings)
+        hpa_entries = [e for e in did_entries if classify_entry(e) == "hpa"]
+        hpb_entries = [e for e in did_entries if classify_entry(e) == "hpb"]
         print(f"Report written: {output_file}")
-        print(f"Diagnostics DID labels found: {len(did_entries)}")
-        print(f"Missing mappings: {missing}")
+        print(f"Diagnostics DID labels found: {len(did_entries)} ({len(hpa_entries)} HPA, {len(hpb_entries)} HPB)")
         return 0
 
     except Exception as exc:
