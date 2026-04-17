@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSA Log Filter</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: #f0f2f5;
+    color: #1a1a1a;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    gap: 10px;
+  }
+
+  h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1a2540;
+    letter-spacing: .01em;
+  }
+
+  /* ── Drop zone ── */
+  #drop-zone {
+    border: 2px dashed #1a56db;
+    border-radius: 8px;
+    background: #dce8fc;
+    color: #1a56db;
+    font-size: 1rem;
+    font-weight: 500;
+    text-align: center;
+    padding: 22px 16px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+    user-select: none;
+  }
+  #drop-zone.hover  { background: #b8d0f8; border-color: #1040aa; }
+  #drop-zone.done   { background: #d4edda; border-color: #2e7d52; color: #155724; }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  button {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 5px;
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  button:disabled { opacity: .4; cursor: default; }
+  #btn-browse { background: #e2e8f0; color: #1a1a1a; }
+  #btn-browse:not(:disabled):hover { background: #cbd5e1; }
+  #btn-save   { background: #1a56db; color: #fff; margin-left: auto; }
+  #btn-save:not(:disabled):hover   { background: #1040aa; }
+
+  #status {
+    font-size: .82rem;
+    color: #555;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Output ── */
+  #output-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  label[for="output"] {
+    font-size: .8rem;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 4px;
+  }
+  #output {
+    flex: 1;
+    resize: none;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: "Consolas", "Cascadia Code", monospace;
+    font-size: .82rem;
+    line-height: 1.55;
+    background: #fff;
+    color: #1a1a1a;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+  }
+  #output:focus { outline: 2px solid #1a56db; outline-offset: 1px; }
+
+  /* Hidden file input */
+  #file-input { display: none; }
+</style>
+</head>
+<body>
+
+<h1>DSA Log Filter — Camera DTC Viewer</h1>
+
+<div id="drop-zone">
+  Drop DSA log file here — or click <strong>Browse</strong> below
+</div>
+
+<div id="toolbar">
+  <button id="btn-browse">Browse…</button>
+  <span id="status">No file loaded.</span>
+  <button id="btn-save" disabled>Save filtered file</button>
+</div>
+
+<div id="output-wrap">
+  <label for="output">Filtered Output</label>
+  <textarea id="output" readonly spellcheck="false" placeholder="Filtered log will appear here…"></textarea>
+</div>
+
+<input type="file" id="file-input" accept=".txt,*">
+
+<script>
+// ── DSA filter logic (mirrors parse_dsa_log_to_easy_to_read.py) ──────────────
+
+const REQUEST_START_RE = /^#\s*Sending Request:\s*Tester\s*->/i;
+
+const IS_READ_DTC_HINTS = [
+  /\bRead\s+DTC\s+Information\b/i,
+  /\bReport\s+DTC\b/i,
+  /\b19\s+0[0-9A-Fa-f]\b/
+];
+
+const CAMERA_PREFIX_SET = new Set([
+  "D4D5","D50A","D50B","D50C","D509","D4EE","D4EF","D606","D607"
+]);
+
+const DTC_HEAD_RE   = /^\s*([A-F0-9]{4,8})\s+/;
+const DTC_STATUS_RE = /^\s{1,}(0[1-9]|20|80)\s+/;
+
+function isDtcHeader(line) {
+  const m = DTC_HEAD_RE.exec(line);
+  return m ? m[1].trim() : null;
+}
+
+function isCameraCode(code) {
+  return code && code.length >= 4 && CAMERA_PREFIX_SET.has(code.slice(0, 4).toUpperCase());
+}
+
+function blockIsReadDtc(block) {
+  const chunk = block.slice(0, 10).join("\n");
+  return IS_READ_DTC_HINTS.some(re => re.test(chunk));
+}
+
+function appendBlankOnce(arr) {
+  if (arr.length && arr[arr.length - 1].trim() !== "") arr.push("");
+}
+
+function filterLog(text) {
+  const lines = text.split(/\r?\n/);
+  const out   = [];
+  let i = 0;
+  const n = lines.length;
+
+  while (i < n) {
+    const line = lines[i];
+
+    if (REQUEST_START_RE.test(line)) {
+      const block = [line]; i++;
+      while (i < n && !REQUEST_START_RE.test(lines[i])) {
+        block.push(lines[i]); i++;
+      }
+
+      if (blockIsReadDtc(block)) {
+        let j = 0;
+        const fb = [];
+        while (j < block.length) {
+          const L    = block[j];
+          const code = isDtcHeader(L);
+          if (code !== null) {
+            if (isCameraCode(code)) {
+              fb.push(L); let k = j + 1;
+              while (k < block.length && DTC_STATUS_RE.test(block[k])) {
+                fb.push(block[k]); k++;
+              }
+              appendBlankOnce(fb); j = k;
+            } else {
+              let k = j + 1;
+              while (k < block.length && DTC_STATUS_RE.test(block[k])) k++;
+              j = k;
+            }
+          } else {
+            fb.push(L); j++;
+          }
+        }
+        out.push(...fb);
+      } else {
+        out.push(...block);
+      }
+      continue;
+    }
+
+    out.push(line); i++;
+  }
+
+  return out.join("\n").replace(/\n+$/, "") + "\n";
+}
+
+// ── UI wiring ─────────────────────────────────────────────────────────────────
+
+const dropZone  = document.getElementById("drop-zone");
+const btnBrowse = document.getElementById("btn-browse");
+const btnSave   = document.getElementById("btn-save");
+const statusEl  = document.getElementById("status");
+const output    = document.getElementById("output");
+const fileInput = document.getElementById("file-input");
+
+let lastFileName = "";
+let filteredContent = "";
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+function processFile(file) {
+  if (!file) return;
+  setStatus("Processing: " + file.name + " …");
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      filteredContent = filterLog(e.target.result);
+      lastFileName    = file.name.replace(/\.txt$/i, "");
+      output.value    = filteredContent;
+      btnSave.disabled = false;
+      setStatus("Loaded: " + file.name);
+      const stem = file.name.replace(/\.[^.]+$/, "");
+      dropZone.textContent = "✔  " + file.name + "  —  drop another file to replace";
+      dropZone.className = "done";
+    } catch (err) {
+      setStatus("Error: " + err.message);
+    }
+  };
+  reader.onerror = () => setStatus("Error reading file.");
+  reader.readAsText(file, "utf-8");
+}
+
+// Drag-and-drop
+dropZone.addEventListener("dragenter", e => { e.preventDefault(); dropZone.classList.add("hover"); });
+dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("hover"); });
+dropZone.addEventListener("dragleave", e => { if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove("hover"); });
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("hover");
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+});
+
+// Browse button
+btnBrowse.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  if (fileInput.files[0]) processFile(fileInput.files[0]);
+  fileInput.value = "";
+});
+
+// Save
+btnSave.addEventListener("click", () => {
+  if (!filteredContent) return;
+  const blob = new Blob([filteredContent], { type: "text/plain" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = lastFileName + "_filtered.txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+</script>
+</body>
+</html>
