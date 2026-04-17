@@ -5,144 +5,432 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DSA Log Filter</title>
 <style>
+  /* ── Reset ───────────────────────────────────────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* ── VS Code Dark+ palette ───────────────────────────────────────────────── */
+  :root {
+    --bg-base:       #1e1e1e;
+    --bg-panel:      #252526;
+    --bg-input:      #1e1e1e;
+    --bg-hover:      #2a2d2e;
+    --bg-active:     #37373d;
+    --border:        #3c3c3c;
+    --border-focus:  #007acc;
+    --text:          #d4d4d4;
+    --text-dim:      #858585;
+    --text-dimmer:   #4d4d4d;
+    --accent:        #007acc;
+    --accent-hover:  #1a8ad4;
+    --accent-text:   #ffffff;
+    --green:         #4ec9b0;
+    --green-bg:      #1b3a35;
+    --green-border:  #2d6b5e;
+    --drop-border:   #007acc;
+    --drop-bg:       #1b2d3e;
+    --drop-text:     #4da6d9;
+    --drop-hover-bg: #1f3448;
+    --radius:        4px;
+    --font-ui:       "Segoe UI", system-ui, sans-serif;
+    --font-mono:     "Cascadia Code", "Fira Code", "Consolas", monospace;
+  }
+
+  /* ── Layout ──────────────────────────────────────────────────────────────── */
+  html, body { height: 100%; }
+
   body {
-    font-family: "Segoe UI", system-ui, sans-serif;
-    background: #f0f2f5;
-    color: #1a1a1a;
-    height: 100vh;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    background: var(--bg-base);
+    color: var(--text);
     display: flex;
     flex-direction: column;
-    padding: 14px;
-    gap: 10px;
+    height: 100vh;
+    overflow: hidden;
   }
 
-  h1 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: #1a2540;
-    letter-spacing: .01em;
-  }
-
-  /* ── Drop zone ── */
-  #drop-zone {
-    border: 2px dashed #1a56db;
-    border-radius: 8px;
-    background: #dce8fc;
-    color: #1a56db;
-    font-size: 1rem;
-    font-weight: 500;
-    text-align: center;
-    padding: 22px 16px;
-    cursor: pointer;
-    transition: background .15s, border-color .15s, color .15s;
-    user-select: none;
-  }
-  #drop-zone.hover  { background: #b8d0f8; border-color: #1040aa; }
-  #drop-zone.done   { background: #d4edda; border-color: #2e7d52; color: #155724; }
-
-  /* ── Toolbar ── */
-  #toolbar {
+  /* ── Title bar ───────────────────────────────────────────────────────────── */
+  #titlebar {
+    background: #323233;
+    border-bottom: 1px solid #111;
+    padding: 0 16px;
+    height: 35px;
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0;
+    user-select: none;
   }
-  button {
-    padding: 6px 16px;
-    border: none;
-    border-radius: 5px;
-    font: inherit;
-    font-size: .88rem;
-    font-weight: 500;
+
+  .icon-circle {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: .7;
+    flex-shrink: 0;
+  }
+
+  #titlebar h1 {
+    font-size: 12px;
+    font-weight: 400;
+    color: #cccccc;
+    letter-spacing: .03em;
+  }
+
+  #titlebar .pill {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--bg-active);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1px 8px;
+  }
+
+  /* ── Activity bar (left strip) ───────────────────────────────────────────── */
+  #main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  #sidebar {
+    width: 46px;
+    background: #333333;
+    border-right: 1px solid #111;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .sb-icon {
+    width: 34px; height: 34px;
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim);
+    font-size: 18px;
+    cursor: default;
+    position: relative;
+  }
+  .sb-icon.active {
+    color: var(--text);
+    background: var(--bg-active);
+  }
+  .sb-icon.active::before {
+    content: "";
+    position: absolute;
+    left: -2px; top: 6px; bottom: 6px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+  }
+
+  /* ── Content area ────────────────────────────────────────────────────────── */
+  #content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* ── Editor tabs ─────────────────────────────────────────────────────────── */
+  #tabs {
+    background: #2d2d2d;
+    border-bottom: 1px solid #111;
+    display: flex;
+    align-items: stretch;
+    height: 35px;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    border-right: 1px solid #111;
+    cursor: default;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .tab.active {
+    background: var(--bg-base);
+    color: var(--text);
+    border-top: 1px solid var(--accent);
+    margin-top: -1px;
+  }
+  .tab-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: .5;
+  }
+
+  /* ── Panel body ──────────────────────────────────────────────────────────── */
+  #panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 16px;
+    gap: 10px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ── Section label (like VSCode breadcrumb) ──────────────────────────────── */
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-dim);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  /* ── Drop zone ───────────────────────────────────────────────────────────── */
+  #drop-zone {
+    border: 1px dashed var(--drop-border);
+    border-radius: var(--radius);
+    background: var(--drop-bg);
+    color: var(--drop-text);
+    font-size: 13px;
+    text-align: center;
+    padding: 18px 16px;
     cursor: pointer;
-    transition: opacity .15s;
+    transition: background .12s, border-color .12s;
+    user-select: none;
+    flex-shrink: 0;
   }
-  button:disabled { opacity: .4; cursor: default; }
-  #btn-browse { background: #e2e8f0; color: #1a1a1a; }
-  #btn-browse:not(:disabled):hover { background: #cbd5e1; }
-  #btn-save   { background: #1a56db; color: #fff; margin-left: auto; }
-  #btn-save:not(:disabled):hover   { background: #1040aa; }
+  #drop-zone .hint {
+    font-size: 11px;
+    color: var(--text-dimmer);
+    margin-top: 3px;
+  }
+  #drop-zone.hover  { background: var(--drop-hover-bg); border-color: var(--accent-hover); }
+  #drop-zone.done   { background: var(--green-bg); border-color: var(--green-border); color: var(--green); }
+  #drop-zone.done .hint { color: #3a7a6e; }
+
+  /* ── Toolbar ─────────────────────────────────────────────────────────────── */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  button {
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .1s, border-color .1s;
+    background: var(--bg-panel);
+    color: var(--text);
+  }
+  button:hover:not(:disabled)  { background: var(--bg-hover); border-color: #555; }
+  button:active:not(:disabled) { background: var(--bg-active); }
+  button:disabled { opacity: .35; cursor: default; }
+
+  #btn-save {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+    margin-left: auto;
+  }
+  #btn-save:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 
   #status {
-    font-size: .82rem;
-    color: #555;
+    font-size: 12px;
+    color: var(--text-dim);
     flex: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  /* ── Output ── */
-  #output-wrap {
+  /* ── Output editor area ──────────────────────────────────────────────────── */
+  #editor-wrap {
     flex: 1;
     display: flex;
     flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
     min-height: 0;
   }
-  label[for="output"] {
-    font-size: .8rem;
-    font-weight: 600;
-    color: #444;
-    margin-bottom: 4px;
+
+  #editor-header {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
   }
+
+  #editor-header .lang-badge {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-dimmer);
+  }
+
   #output {
     flex: 1;
-    resize: none;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 10px 12px;
-    font-family: "Consolas", "Cascadia Code", monospace;
-    font-size: .82rem;
-    line-height: 1.55;
-    background: #fff;
-    color: #1a1a1a;
+    border: none;
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    background: var(--bg-input);
+    color: var(--text);
     white-space: pre-wrap;
     word-break: break-word;
     overflow-y: auto;
+    outline: none;
+    min-height: 0;
+    cursor: text;
+    user-select: text;
   }
-  #output:focus { outline: 2px solid #1a56db; outline-offset: 1px; }
+  #output::selection { background: #264f78; }
 
-  /* Hidden file input */
+  /* placeholder when empty */
+  #output:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-dimmer);
+    font-style: italic;
+    pointer-events: none;
+  }
+
+  /* ── Syntax highlight token colours (VS Code Dark+ token palette) ── */
+  .hl-request     { color: #569cd6; font-weight: 600; }  /* keyword blue */
+  .hl-tester      { color: #9cdcfe; }                    /* parameter blue */
+  .hl-response    { color: #dcdcaa; }                    /* function yellow */
+  .hl-time        { color: #6a9955; }                    /* comment green */
+  .hl-dtc-code    { color: #4ec9b0; font-weight: 600; }  /* class teal */
+  .hl-dtc-desc    { color: #d4d4d4; }                    /* default */
+  .hl-status-code { color: #ce9178; font-weight: 600; }  /* string orange */
+  .hl-status-desc { color: #858585; }                    /* comment gray */
+  .hl-status-lead { color: var(--text-dimmer); }         /* leading whitespace */
+  .hl-key         { color: #9cdcfe; }                    /* property light-blue */
+  .hl-value       { color: #ce9178; }                    /* value orange */
+  .hl-mask        { color: #c586c0; }                    /* type purple */
+  .hl-hex         { color: #b5cea8; }                    /* number green */
+
+  /* ── Status bar ──────────────────────────────────────────────────────────── */
+  #statusbar {
+    height: 22px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 16px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  #statusbar span { opacity: .85; }
+  #sb-file { font-weight: 500; opacity: 1; }
+
+  /* ── Hidden file input ───────────────────────────────────────────────────── */
   #file-input { display: none; }
+
+  /* ── Scrollbar ───────────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar              { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track        { background: var(--bg-base); }
+  ::-webkit-scrollbar-thumb        { background: #424242; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover  { background: #555; }
 </style>
 </head>
 <body>
 
-<h1>DSA Log Filter — Camera DTC Viewer</h1>
-
-<div id="drop-zone">
-  Drop DSA log file here — or click <strong>Browse</strong> below
+<!-- Title bar -->
+<div id="titlebar">
+  <div class="icon-circle"></div>
+  <h1>DSA Log Filter</h1>
+  <span class="pill">Camera DTC Viewer</span>
 </div>
 
-<div id="toolbar">
-  <button id="btn-browse">Browse…</button>
-  <span id="status">No file loaded.</span>
-  <button id="btn-save" disabled>Save filtered file</button>
-</div>
+<div id="main">
 
-<div id="output-wrap">
-  <label for="output">Filtered Output</label>
-  <textarea id="output" readonly spellcheck="false" placeholder="Filtered log will appear here…"></textarea>
+  <!-- Activity bar -->
+  <div id="sidebar">
+    <div class="sb-icon active" title="Filter">&#9741;</div>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- Tabs -->
+    <div id="tabs">
+      <div class="tab active">
+        <div class="tab-dot"></div>
+        filter.log
+      </div>
+    </div>
+
+    <!-- Panel -->
+    <div id="panel">
+
+      <div class="section-label">Input</div>
+
+      <div id="drop-zone">
+        Drop DSA log file here
+        <div class="hint">or click Browse below &mdash; .txt files</div>
+      </div>
+
+      <div id="toolbar">
+        <button id="btn-browse">Browse&hellip;</button>
+        <span id="status">No file loaded.</span>
+        <button id="btn-save" disabled>&#8595; Save filtered file</button>
+      </div>
+
+      <div class="section-label">Output</div>
+
+      <div id="editor-wrap">
+        <div id="editor-header">
+          <span id="editor-filename">filtered output</span>
+          <span class="lang-badge">Plain Text</span>
+        </div>
+        <div id="output" tabindex="0"
+          data-placeholder="Filtered log will appear here…"></div>
+      </div>
+
+    </div><!-- /panel -->
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- Status bar -->
+<div id="statusbar">
+  <span id="sb-file">DSA Log Filter</span>
+  <span id="sb-lines"></span>
 </div>
 
 <input type="file" id="file-input" accept=".txt,*">
 
 <script>
-// ── DSA filter logic (mirrors parse_dsa_log_to_easy_to_read.py) ──────────────
-
+// ── DSA filter logic ──────────────────────────────────────────────────────────
 const REQUEST_START_RE = /^#\s*Sending Request:\s*Tester\s*->/i;
-
 const IS_READ_DTC_HINTS = [
   /\bRead\s+DTC\s+Information\b/i,
   /\bReport\s+DTC\b/i,
   /\b19\s+0[0-9A-Fa-f]\b/
 ];
-
 const CAMERA_PREFIX_SET = new Set([
   "D4D5","D50A","D50B","D50C","D509","D4EE","D4EF","D606","D607"
 ]);
-
 const DTC_HEAD_RE   = /^\s*([A-F0-9]{4,8})\s+/;
 const DTC_STATUS_RE = /^\s{1,}(0[1-9]|20|80)\s+/;
 
@@ -150,97 +438,143 @@ function isDtcHeader(line) {
   const m = DTC_HEAD_RE.exec(line);
   return m ? m[1].trim() : null;
 }
-
 function isCameraCode(code) {
   return code && code.length >= 4 && CAMERA_PREFIX_SET.has(code.slice(0, 4).toUpperCase());
 }
-
 function blockIsReadDtc(block) {
   const chunk = block.slice(0, 10).join("\n");
   return IS_READ_DTC_HINTS.some(re => re.test(chunk));
 }
-
 function appendBlankOnce(arr) {
   if (arr.length && arr[arr.length - 1].trim() !== "") arr.push("");
 }
-
 function filterLog(text) {
   const lines = text.split(/\r?\n/);
   const out   = [];
-  let i = 0;
-  const n = lines.length;
-
+  let i = 0, n = lines.length;
   while (i < n) {
     const line = lines[i];
-
     if (REQUEST_START_RE.test(line)) {
       const block = [line]; i++;
-      while (i < n && !REQUEST_START_RE.test(lines[i])) {
-        block.push(lines[i]); i++;
-      }
-
+      while (i < n && !REQUEST_START_RE.test(lines[i])) { block.push(lines[i]); i++; }
       if (blockIsReadDtc(block)) {
-        let j = 0;
-        const fb = [];
+        let j = 0; const fb = [];
         while (j < block.length) {
-          const L    = block[j];
-          const code = isDtcHeader(L);
+          const L = block[j], code = isDtcHeader(L);
           if (code !== null) {
             if (isCameraCode(code)) {
               fb.push(L); let k = j + 1;
-              while (k < block.length && DTC_STATUS_RE.test(block[k])) {
-                fb.push(block[k]); k++;
-              }
+              while (k < block.length && DTC_STATUS_RE.test(block[k])) { fb.push(block[k]); k++; }
               appendBlankOnce(fb); j = k;
             } else {
               let k = j + 1;
               while (k < block.length && DTC_STATUS_RE.test(block[k])) k++;
               j = k;
             }
-          } else {
-            fb.push(L); j++;
-          }
+          } else { fb.push(L); j++; }
         }
         out.push(...fb);
-      } else {
-        out.push(...block);
-      }
+      } else { out.push(...block); }
       continue;
     }
-
     out.push(line); i++;
   }
-
   return out.join("\n").replace(/\n+$/, "") + "\n";
 }
 
-// ── UI wiring ─────────────────────────────────────────────────────────────────
+// ── Syntax highlighting ──────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
 
-const dropZone  = document.getElementById("drop-zone");
-const btnBrowse = document.getElementById("btn-browse");
-const btnSave   = document.getElementById("btn-save");
-const statusEl  = document.getElementById("status");
-const output    = document.getElementById("output");
-const fileInput = document.getElementById("file-input");
+// Highlight inline hex byte sequences (e.g. "19 02 2F")
+function hlHex(s) {
+  return s.replace(/\b([0-9A-F]{2})(?=\s|$)/g, '<span class="hl-hex">$1</span>');
+}
 
-let lastFileName = "";
-let filteredContent = "";
+function highlightLog(text) {
+  return text.split(/\r?\n/).map(line => {
+    const e = escapeHtml(line);
+
+    // # Sending Request: ...
+    if (/^#\s*Sending Request:/i.test(line))
+      return `<span class="hl-request">${e}</span>`;
+
+    // Tester -> ...
+    if (/^Tester\s*->/.test(line))
+      return `<span class="hl-tester">${e}</span>`;
+
+    // Complete Response: ...
+    if (/^Complete Response:/i.test(line)) {
+      const ci = line.indexOf(':');
+      return `<span class="hl-response">${escapeHtml(line.slice(0, ci+1))}</span>`
+           + `<span class="hl-hex">${escapeHtml(line.slice(ci+1))}</span>`;
+    }
+
+    // Time stamp / P2 time
+    if (/^Time\s+(stamp|between)/i.test(line))
+      return `<span class="hl-time">${e}</span>`;
+
+    // DTC status lines  " 01   Test failed"
+    const stM = line.match(/^(\s+)(0[1-9A-F]|20|80)(\s+.*)$/i);
+    if (stM)
+      return `<span class="hl-status-lead">${escapeHtml(stM[1])}</span>`
+           + `<span class="hl-status-code">${escapeHtml(stM[2])}</span>`
+           + `<span class="hl-status-desc">${escapeHtml(stM[3])}</span>`;
+
+    // DTC header lines  "D50A54   Short Range Camera..."
+    const dtcM = line.match(/^([A-F0-9]{4,8})(\s+.*)?$/i);
+    if (dtcM && dtcM[1].length >= 4)
+      return `<span class="hl-dtc-code">${escapeHtml(dtcM[1])}</span>`
+           + `<span class="hl-dtc-desc">${escapeHtml(dtcM[2] || '')}</span>`;
+
+    // FF   DTC Status Availability Mask
+    if (/^FF\s+/i.test(line))
+      return `<span class="hl-mask">${e}</span>`;
+
+    // key: value  (snake_case or camelCase property lines)
+    const kvM = line.match(/^([a-zA-Z_][a-zA-Z0-9_ ]*)(:)(.*)$/);
+    if (kvM)
+      return `<span class="hl-key">${escapeHtml(kvM[1]+kvM[2])}</span>`
+           + `<span class="hl-value">${escapeHtml(kvM[3])}</span>`;
+
+    return e;
+  }).join('\n');
+}
+
+// ── UI ────────────────────────────────────────────────────────────────────────
+const dropZone     = document.getElementById("drop-zone");
+const btnBrowse    = document.getElementById("btn-browse");
+const btnSave      = document.getElementById("btn-save");
+const statusEl     = document.getElementById("status");
+const output       = document.getElementById("output");
+const fileInput    = document.getElementById("file-input");
+const sbFile       = document.getElementById("sb-file");
+const sbLines      = document.getElementById("sb-lines");
+const editorFname  = document.getElementById("editor-filename");
+
+let lastFileName = "", filteredContent = "";
 
 function setStatus(msg) { statusEl.textContent = msg; }
 
 function processFile(file) {
   if (!file) return;
-  setStatus("Processing: " + file.name + " …");
+  setStatus("Processing " + file.name + " …");
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      filteredContent = filterLog(e.target.result);
-      lastFileName    = file.name.replace(/\.txt$/i, "");
-      output.value    = filteredContent;
+      filteredContent  = filterLog(e.target.result);
+      lastFileName     = file.name.replace(/\.[^.]+$/, "");
+      output.innerHTML = highlightLog(filteredContent);
       btnSave.disabled = false;
+
+      const lines = filteredContent.split("\n").length;
       setStatus("Loaded: " + file.name);
-      const stem = file.name.replace(/\.[^.]+$/, "");
-      dropZone.textContent = "✔  " + file.name + "  —  drop another file to replace";
+      sbFile.textContent  = file.name;
+      sbLines.textContent = lines.toLocaleString() + " lines";
+      editorFname.textContent = lastFileName + "_filtered.txt";
+
+      dropZone.innerHTML = `<div>&#10004; ${file.name}</div><div class="hint">Drop another file to replace</div>`;
       dropZone.className = "done";
     } catch (err) {
       setStatus("Error: " + err.message);
@@ -253,15 +587,16 @@ function processFile(file) {
 // Drag-and-drop
 dropZone.addEventListener("dragenter", e => { e.preventDefault(); dropZone.classList.add("hover"); });
 dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("hover"); });
-dropZone.addEventListener("dragleave", e => { if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove("hover"); });
+dropZone.addEventListener("dragleave", e => {
+  if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove("hover");
+});
 dropZone.addEventListener("drop", e => {
   e.preventDefault();
   dropZone.classList.remove("hover");
-  const file = e.dataTransfer.files[0];
-  if (file) processFile(file);
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
 });
 
-// Browse button
+// Browse
 btnBrowse.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
   if (fileInput.files[0]) processFile(fileInput.files[0]);
@@ -274,8 +609,7 @@ btnSave.addEventListener("click", () => {
   const blob = new Blob([filteredContent], { type: "text/plain" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
-  a.href     = url;
-  a.download = lastFileName + "_filtered.txt";
+  a.href = url; a.download = lastFileName + "_filtered.txt";
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 });
