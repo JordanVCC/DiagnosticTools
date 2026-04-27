@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snapshot Viewer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-base:      #1e1e1e;
+    --bg-panel:     #252526;
+    --bg-card:      #2d2d30;
+    --bg-input:     #3c3c3c;
+    --bg-hover:     #2a2d2e;
+    --bg-active:    #37373d;
+    --border:       #3c3c3c;
+    --text:         #d4d4d4;
+    --text-dim:     #9e9e9e;
+    --text-dimmer:  #6e6e6e;
+    --accent:       #007acc;
+    --green:        #4ec9b0;
+    --yellow:       #dcdcaa;
+    --orange:       #ce9178;
+    --red:          #f44747;
+    --purple:       #c586c0;
+    --blue-lt:      #9cdcfe;
+    --radius:       5px;
+    --font-ui:      "Segoe UI", system-ui, sans-serif;
+    --font-mono:    "Cascadia Code", "Consolas", monospace;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    background: var(--bg-base);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  /* ── Title bar ── */
+  #titlebar {
+    background: #323233;
+    border-bottom: 1px solid #111;
+    padding: 0 16px;
+    height: 36px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+  }
+  #titlebar .title { font-size: 13px; font-weight: 600; color: var(--text); }
+  #titlebar .subtitle { font-size: 11px; color: var(--text-dim); }
+  #file-info { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+  #file-info span { color: var(--green); }
+
+  /* ── Drop zone ── */
+  #drop-zone {
+    flex-shrink: 0;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    margin: 12px 16px 0;
+    padding: 28px;
+    text-align: center;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    background: #1b2b3a20;
+  }
+  #drop-zone.drag-over {
+    border-color: var(--accent);
+    background: #007acc18;
+    color: var(--text);
+  }
+  #drop-zone.loaded {
+    padding: 10px;
+    border-style: solid;
+    border-color: #3c3c3c;
+    cursor: default;
+  }
+  #drop-zone .drop-icon { font-size: 28px; line-height: 1; margin-bottom: 6px; }
+  #drop-zone .drop-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  #drop-zone .drop-sub { font-size: 11px; color: var(--text-dimmer); }
+  #drop-zone.loaded .drop-icon,
+  #drop-zone.loaded .drop-title,
+  #drop-zone.loaded .drop-sub { display: none; }
+  #drop-zone .loaded-msg {
+    display: none;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  #drop-zone.loaded .loaded-msg { display: block; }
+
+  /* ── Filter bar ── */
+  #filterbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+  select, input[type=text] {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    padding: 4px 8px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  select:focus, input[type=text]:focus { border-color: var(--accent); }
+  select { cursor: pointer; padding-right: 6px; }
+
+  #search-input { flex: 1; min-width: 100px; max-width: 280px; }
+
+  #stats-bar {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  #stats-bar span { color: var(--text); }
+
+  /* ── Event list ── */
+  #event-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 16px 16px;
+  }
+  #event-list::-webkit-scrollbar { width: 8px; }
+  #event-list::-webkit-scrollbar-track { background: var(--bg-base); }
+  #event-list::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+  #event-list::-webkit-scrollbar-thumb:hover { background: #777; }
+
+  /* ── Empty / loading states ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--text-dimmer);
+    gap: 8px;
+    font-size: 13px;
+  }
+  .empty-state .icon { font-size: 32px; }
+
+  /* ── Event card ── */
+  .event-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: border-color .15s;
+  }
+  .event-card:hover { border-color: #5a5a5a; }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .card-header:hover { background: var(--bg-hover); }
+
+  .event-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    min-width: 90px;
+    flex-shrink: 0;
+  }
+
+  .ecu-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: #2b3a4a;
+    color: var(--blue-lt);
+    border: 1px solid #3a5068;
+    flex-shrink: 0;
+  }
+
+  .event-name-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .badge-fault    { background: #3d1a1a; color: #f44747; border: 1px solid #6b2c2c; }
+  .badge-action   { background: #2d2916; color: #e5c07b; border: 1px solid #5a4a25; }
+  .badge-pril     { background: #1a2d3a; color: #61afef; border: 1px solid #2d5070; }
+  .badge-other    { background: #2a2a3a; color: #c586c0; border: 1px solid #4a3a5a; }
+
+  .card-summary {
+    font-size: 12px;
+    color: var(--text-dim);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-summary .highlight { color: var(--text); }
+  .card-summary .dtc-id { 
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--orange);
+    margin-right: 4px;
+  }
+  .card-summary .status-failed { color: var(--red); font-weight: 600; }
+  .card-summary .status-passed { color: var(--green); font-weight: 600; }
+
+  .expand-arrow {
+    font-size: 10px;
+    color: var(--text-dimmer);
+    flex-shrink: 0;
+    transition: transform .15s;
+  }
+  .event-card.expanded .expand-arrow { transform: rotate(90deg); }
+
+  /* ── Card body ── */
+  .card-body {
+    display: none;
+    border-top: 1px solid var(--border);
+    padding: 12px;
+  }
+  .event-card.expanded .card-body { display: block; }
+
+  /* ── Payload sections ── */
+  .payload-section {
+    margin-bottom: 12px;
+  }
+  .payload-section:last-child { margin-bottom: 0; }
+
+  .payload-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Fault event specific ── */
+  .fault-info {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+  .fault-info .fi-label { color: var(--text-dim); }
+  .fault-info .fi-value { color: var(--text); }
+  .fault-info .fi-value.dtc { font-family: var(--font-mono); color: var(--orange); }
+  .fault-info .fi-value.failed { color: var(--red); font-weight: 600; }
+  .fault-info .fi-value.passed { color: var(--green); font-weight: 600; }
+
+  /* ── Action update specific ── */
+  .action-info {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+  }
+  .action-info .ai-label { color: var(--text-dim); }
+  .action-info .ai-value { color: var(--text); font-family: var(--font-mono); font-size: 11px; }
+  .action-info .ai-value.active { color: var(--yellow); }
+  .action-info .ai-value.inactive { color: var(--text-dim); }
+
+  /* ── Snapshot table ── */
+  .snapshot-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--purple);
+    margin-bottom: 6px;
+  }
+
+  .snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .snapshot-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 11px;
+    padding: 3px 6px;
+    background: #22222a;
+    border-radius: 3px;
+    border: 1px solid #2e2e3a;
+  }
+  .snap-name {
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .snap-val {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--blue-lt);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .snap-unit {
+    font-size: 10px;
+    color: var(--text-dimmer);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .bit-val-set   { color: var(--red) !important; font-weight: 700; }
+  .bit-val-clear { color: var(--text-dimmer) !important; }
+  .snapshot-item.bit-set { border-color: #6b2c2c; background: #2a1a1a; }
+
+  /* ── PRIL list ── */
+  .pril-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pril-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    padding: 4px 8px;
+    background: #22222a;
+    border-radius: 3px;
+    border: 1px solid #2e2e3a;
+  }
+  .pril-ecu { font-family: var(--font-mono); color: var(--blue-lt); }
+  .pril-state-on  { color: var(--green); font-weight: 600; }
+  .pril-state-off { color: var(--red); font-weight: 600; }
+  .pril-time { color: var(--text-dimmer); font-size: 10px; }
+
+  /* ── Generic value list ── */
+  .value-kv {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 4px;
+  }
+  .kv-item {
+    display: flex;
+    gap: 6px;
+    font-size: 11px;
+    padding: 3px 6px;
+    background: #22222a;
+    border-radius: 3px;
+  }
+  .kv-key { color: var(--text-dim); }
+  .kv-val { font-family: var(--font-mono); color: var(--blue-lt); }
+
+  /* ── DTC multi-select picker ── */
+  .dtc-picker { position: relative; flex-shrink: 0; }
+  .dtc-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    padding: 4px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color .15s;
+    user-select: none;
+  }
+  .dtc-btn:hover { border-color: #6e6e6e; }
+  .dtc-btn.active { border-color: var(--accent); color: var(--blue-lt); }
+  .dtc-btn .dtc-arrow { font-size: 9px; color: var(--text-dimmer); transition: transform .15s; }
+  .dtc-btn.open .dtc-arrow { transform: rotate(180deg); }
+  .dtc-badge {
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 10px;
+    min-width: 16px;
+    text-align: center;
+  }
+  .dtc-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 100;
+    width: 320px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px #00000060;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .dtc-panel.open { display: flex; }
+  .dtc-panel-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dtc-search {
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 12px;
+    padding: 4px 8px;
+    outline: none;
+    font-family: var(--font-ui);
+  }
+  .dtc-search:focus { border-color: var(--accent); }
+  .dtc-act-btn {
+    font-size: 11px;
+    color: var(--text-dim);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .dtc-act-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .dtc-list {
+    overflow-y: auto;
+    max-height: 260px;
+    padding: 4px 0;
+  }
+  .dtc-list::-webkit-scrollbar { width: 6px; }
+  .dtc-list::-webkit-scrollbar-track { background: var(--bg-panel); }
+  .dtc-list::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+  .dtc-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .dtc-item:hover { background: var(--bg-hover); }
+  .dtc-item input[type=checkbox] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .dtc-item .dtc-id-lbl { font-family: var(--font-mono); color: var(--orange); flex-shrink: 0; }
+  .dtc-item .dtc-name-lbl { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dtc-empty { padding: 12px; text-align: center; color: var(--text-dimmer); font-size: 12px; }
+
+  /* ── Meta row ── */
+  .meta-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--text-dimmer);
+    margin-bottom: 10px;
+  }
+  .meta-row span { color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<div id="titlebar">
+  <div class="title">Snapshot Viewer</div>
+  <div class="subtitle">Diagnostic Kernel Event Log</div>
+  <div id="file-info"></div>
+</div>
+
+<div id="drop-zone">
+  <div class="drop-icon">📂</div>
+  <div class="drop-title">Drop snapshot JSON here</div>
+  <div class="drop-sub">Newline-delimited JSON (NDJSON) format &mdash; e.g. success.json</div>
+  <div class="loaded-msg">Drop a new file to replace</div>
+</div>
+
+<div id="filterbar" style="display:none">
+  <span class="filter-label">ECU</span>
+  <select id="ecu-filter"><option value="">All ECUs</option></select>
+  <span class="filter-label">Event</span>
+  <select id="event-filter"><option value="">All Events</option></select>
+  <span class="filter-label">DTC</span>
+  <div class="dtc-picker" id="dtc-picker">
+    <div class="dtc-btn" id="dtc-btn"><span id="dtc-btn-label">All DTCs</span><span class="dtc-arrow">▼</span></div>
+    <div class="dtc-panel" id="dtc-panel">
+      <div class="dtc-panel-top">
+        <input class="dtc-search" id="dtc-search" type="text" placeholder="Search DTC ID or name…">
+        <button class="dtc-act-btn" id="dtc-select-all">All</button>
+        <button class="dtc-act-btn" id="dtc-clear">Clear</button>
+      </div>
+      <div class="dtc-list" id="dtc-list"></div>
+    </div>
+  </div>
+  <input id="search-input" type="text" placeholder="Search descriptions, DTC IDs…">
+  <div id="stats-bar"></div>
+</div>
+
+<div id="event-list">
+  <div class="empty-state">
+    <div class="icon">📋</div>
+    <div>Drop a snapshot JSON file to get started</div>
+  </div>
+</div>
+
+<script>
+  // ── State ────────────────────────────────────────────────────────────────
+  let allEvents = [];
+  let selectedDtcs = new Set();
+  let allDtcOptions = []; // [{id, name}] sorted
+
+  // ── Drag & Drop ──────────────────────────────────────────────────────────
+  const dropZone = document.getElementById('drop-zone');
+
+  document.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) dropZone.classList.remove('drag-over'); });
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  });
+
+  dropZone.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.ndjson,.jsonl,.txt';
+    input.onchange = () => { if (input.files[0]) loadFile(input.files[0]); };
+    input.click();
+  });
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const buf = e.target.result;
+      const bytes = new Uint8Array(buf);
+      // Heuristic: if first byte is a valid varint and result looks like protobuf, use binary decoder
+      // NDJSON always starts with '{' (0x7B). Protobuf length-prefix starts with any varint.
+      // Strongest signal: try to read as text and JSON.parse the first line.
+      const firstByte = bytes[0];
+      const looksLikeText = firstByte === 0x7B || firstByte === 0x5B; // '{' or '['
+      if (!looksLikeText) {
+        const events = decodeBinaryProtobuf(bytes);
+        onEventsLoaded(events, file.name, 'binary');
+      } else {
+        const text = new TextDecoder('utf-8').decode(buf);
+        // Try as NDJSON; if first line has no braces, fall back to binary
+        const firstLine = text.split('\n')[0].trim();
+        if (firstLine.startsWith('{')) {
+          onEventsLoaded(parseNDJSON(text), file.name, 'ndjson');
+        } else {
+          const events = decodeBinaryProtobuf(bytes);
+          onEventsLoaded(events, file.name, 'binary');
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // ── NDJSON parser ────────────────────────────────────────────────────────
+  function parseNDJSON(text) {
+    const events = [];
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue;
+      try { events.push(JSON.parse(line)); } catch { /* skip bad lines */ }
+    }
+    return events;
+  }
+
+  // ── Binary protobuf decoder ──────────────────────────────────────────────
+  function readVarint(bytes, pos) {
+    let result = 0, shift = 0;
+    while (pos < bytes.length) {
+      const b = bytes[pos++];
+      result |= (b & 0x7F) << shift;
+      if (!(b & 0x80)) break;
+      shift += 7;
+    }
+    // JS bitwise ops are 32-bit; for large varints use BigInt path
+    return { value: result >>> 0, pos };
+  }
+
+  function readVarintBig(bytes, pos) {
+    let result = 0n, shift = 0n;
+    while (pos < bytes.length) {
+      const b = bytes[pos++];
+      result |= BigInt(b & 0x7F) << shift;
+      if (!(b & 0x80)) break;
+      shift += 7n;
+    }
+    return { value: result, pos };
+  }
+
+  function decodeSubMsg(bytes, start, end) {
+    // Returns array of {f, wt, v} or null if parse fails
+    const fields = [];
+    let pos = start;
+    try {
+      while (pos < end) {
+        const tv = readVarintBig(bytes, pos); pos = tv.pos;
+        const tag = tv.value;
+        const f = Number(tag >> 3n);
+        const wt = Number(tag & 7n);
+        if (f === 0) return null;
+        if (wt === 0) {
+          const vv = readVarintBig(bytes, pos); pos = vv.pos;
+          fields.push({ f, wt, v: vv.value });
+        } else if (wt === 2) {
+          const lv = readVarint(bytes, pos); pos = lv.pos;
+          const len = lv.value;
+          if (pos + len > end) return null;
+          fields.push({ f, wt, v: bytes.slice(pos, pos + len) });
+          pos += len;
+        } else if (wt === 5) {
+          fields.push({ f, wt, v: bytes.slice(pos, pos + 4) }); pos += 4;
+        } else if (wt === 1) {
+          fields.push({ f, wt, v: bytes.slice(pos, pos + 8) }); pos += 8;
+        } else {
+          return null;
+        }
+      }
+    } catch { return null; }
+    return fields;
+  }
+
+  const utf8 = new TextDecoder('utf-8', { fatal: false });
+
+  function toStr(bytes) { return utf8.decode(bytes); }
+
+  function toInt32(bigv) {
+    const v = Number(bigv) & 0xFFFFFFFF;
+    return v < 0x80000000 ? v : v - 0x100000000;
+  }
+
+  function toInt64str(bigv) {
+    const mask = (1n << 64n);
+    return bigv < (1n << 63n) ? bigv.toString() : (bigv - mask).toString();
+  }
+
+  function decodeTimestamp(bytes) {
+    const fields = decodeSubMsg(bytes, 0, bytes.length);
+    if (!fields) return {};
+    const ts = {};
+    for (const { f, wt, v } of fields) {
+      if (f === 1 && wt === 0) ts.seconds = v.toString();
+      else if (f === 2 && wt === 0) ts.nanos = Number(v);
+    }
+    return ts;
+  }
+
+  function decodeValueItem(bytes) {
+    const fields = decodeSubMsg(bytes, 0, bytes.length);
+    if (!fields) return { _raw: Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('') };
+    const item = {};
+    for (const { f, wt, v } of fields) {
+      if      (f === 1  && wt === 0) item.identifier = Number(v);
+      else if (f === 1  && wt === 2) item.name = toStr(v);
+      else if (f === 2  && wt === 2) item.name = toStr(v);
+      else if (f === 3  && wt === 2) item.unit = toStr(v);
+      else if (f === 4  && wt === 5) item.floatvalue = new DataView(v.buffer, v.byteOffset, 4).getFloat32(0, true);
+      else if (f === 5  && wt === 0) item.int32value = toInt32(v);
+      else if (f === 6  && wt === 0) item.uint32value = Number(v);
+      else if (f === 7  && wt === 0) item.int32value = toInt32(v);
+      else if (f === 8  && wt === 0 && item.boolvalue === undefined) item.boolvalue = v !== 0n;
+      else if (f === 9  && wt === 2) item.stringvalue = toStr(v);
+      else if (f === 12 && wt === 0) item.int64value = toInt64str(v);
+      else if (f === 13 && wt === 2) item.fullDesc = toStr(v);
+      else if (f === 14 && wt === 2) item.metadataVersion = toStr(v);
+    }
+    return item;
+  }
+
+  function decodeSingles(bytes) {
+    const fields = decodeSubMsg(bytes, 0, bytes.length);
+    if (!fields) return { values: [] };
+    const result = { values: [] };
+    for (const { f, wt, v } of fields) {
+      if (f === 1 && wt === 0) result.nrValues = Number(v);
+      else if (wt === 2 && (f === 1 || f === 2)) result.values.push(decodeValueItem(v));
+    }
+    return result;
+  }
+
+  function decodeBitfield(bytes) {
+    const fields = decodeSubMsg(bytes, 0, bytes.length);
+    if (!fields) return {};
+    const bf = {};
+    for (const { f, wt, v } of fields) {
+      if      (f === 1 && wt === 2) bf.name = toStr(v);
+      else if (f === 2 && wt === 2 && v.length > 0) bf.data = btoa(String.fromCharCode(...v));
+      else if (f === 4 && wt === 2) { if (!bf.bitNames) bf.bitNames = []; bf.bitNames.push(toStr(v)); }
+      else if (f === 5 && wt === 2) bf.metadataVersion = toStr(v);
+    }
+    return bf;
+  }
+
+  function decodePayloadValue(bytes) {
+    const fields = decodeSubMsg(bytes, 0, bytes.length);
+    if (!fields) return {};
+    const pv = {};
+    for (const { f, wt, v } of fields) {
+      if      (f === 1 && wt === 2) pv.payloadTime = decodeTimestamp(v);
+      else if (f === 2 && wt === 2) pv.name = toStr(v);
+      else if (f === 7 && wt === 2) pv.singles = decodeSingles(v);
+      else if (f === 9 && wt === 2) { pv.bitfield = decodeBitfield(v); if (!pv.name && pv.bitfield.name) pv.name = pv.bitfield.name; }
+    }
+    return pv;
+  }
+
+  function decodeEvent(bytes) {
+    const fields = decodeSubMsg(bytes, 0, bytes.length);
+    if (!fields) return null;
+    const ev = {};
+    for (const { f, wt, v } of fields) {
+      if      (f === 1 && wt === 0) ev.schemaVersion = Number(v);
+      else if (f === 2 && wt === 2) ev.ecuAddress = toStr(v);
+      else if (f === 3 && wt === 2) ev.softwarePackageName = toStr(v);
+      else if (f === 4 && wt === 2) ev.eventTime = decodeTimestamp(v);
+      else if (f === 5 && wt === 2) ev.name = toStr(v);
+      else if (f === 8 && wt === 2) { if (!ev.payloadValues) ev.payloadValues = []; ev.payloadValues.push(decodePayloadValue(v)); }
+    }
+    return ev;
+  }
+
+  function decodeBinaryProtobuf(bytes) {
+    const events = [];
+    let pos = 0;
+    while (pos < bytes.length) {
+      const lv = readVarint(bytes, pos); pos = lv.pos;
+      const len = lv.value;
+      if (pos + len > bytes.length) break;
+      const ev = decodeEvent(bytes.slice(pos, pos + len));
+      if (ev) events.push(ev);
+      pos += len;
+    }
+    return events;
+  }
+
+  // ── Shared post-load handler ─────────────────────────────────────────────
+  function onEventsLoaded(events, filename, format) {
+    allEvents = events;
+    const fmt = format === 'binary' ? '🔢 binary' : '📄 NDJSON';
+
+    dropZone.classList.add('loaded');
+    dropZone.querySelector('.loaded-msg').textContent =
+      `${fmt} · ${filename}  —  ${allEvents.length} events loaded`;
+
+    document.getElementById('file-info').innerHTML =
+      `<span>${allEvents.length}</span> events &nbsp;·&nbsp; ${filename} &nbsp;<span style="color:var(--text-dimmer)">(${format})</span>`;
+
+    populateFilters();
+    document.getElementById('filterbar').style.display = 'flex';
+    applyFilters();
+  }
+
+  // ── DTC picker logic ─────────────────────────────────────────────────────
+  function getDtcId(ev) {
+    if (ev.name !== 'dkFaultEvent') return null;
+    for (const pv of (ev.payloadValues || [])) {
+      const id = pv.singles?.values?.find(v => v.name === 'dtcId')?.stringvalue;
+      if (id) return id.toLowerCase();
+    }
+    return null;
+  }
+
+  function getDtcName(ev) {
+    for (const pv of (ev.payloadValues || [])) {
+      const name = pv.name || '';
+      if (name && !name.includes('Snapshot') && !name.includes('Global')) return name;
+    }
+    return '';
+  }
+
+  function renderDtcList(filter) {
+    const listEl = document.getElementById('dtc-list');
+    const term = (filter || '').toLowerCase();
+    const visible = allDtcOptions.filter(d =>
+      !term || d.id.includes(term) || d.name.toLowerCase().includes(term)
+    );
+    if (!visible.length) {
+      listEl.innerHTML = '<div class="dtc-empty">No DTCs found</div>';
+      return;
+    }
+    listEl.innerHTML = visible.map(d => `
+      <label class="dtc-item">
+        <input type="checkbox" data-dtc="${escHtml(d.id)}" ${selectedDtcs.has(d.id) ? 'checked' : ''}>
+        <span class="dtc-id-lbl">${escHtml(d.id)}</span>
+        <span class="dtc-name-lbl">${escHtml(d.name)}</span>
+      </label>`).join('');
+    listEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedDtcs.add(cb.dataset.dtc);
+        else selectedDtcs.delete(cb.dataset.dtc);
+        updateDtcBtn();
+        applyFilters();
+      });
+    });
+  }
+
+  function updateDtcBtn() {
+    const btn = document.getElementById('dtc-btn');
+    const lbl = document.getElementById('dtc-btn-label');
+    const existing = btn.querySelector('.dtc-badge');
+    if (existing) existing.remove();
+    if (selectedDtcs.size === 0) {
+      lbl.textContent = 'All DTCs';
+      btn.classList.remove('active');
+    } else {
+      lbl.textContent = selectedDtcs.size === 1 ? [...selectedDtcs][0] : `${selectedDtcs.size} DTCs`;
+      btn.classList.add('active');
+      const badge = document.createElement('span');
+      badge.className = 'dtc-badge';
+      badge.textContent = selectedDtcs.size;
+      btn.insertBefore(badge, btn.querySelector('.dtc-arrow'));
+    }
+  }
+
+  // Toggle panel open/close
+  document.getElementById('dtc-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const panel = document.getElementById('dtc-panel');
+    const btn   = document.getElementById('dtc-btn');
+    const isOpen = panel.classList.toggle('open');
+    btn.classList.toggle('open', isOpen);
+    if (isOpen) { document.getElementById('dtc-search').focus(); renderDtcList(''); }
+  });
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('dtc-picker').contains(e.target)) {
+      document.getElementById('dtc-panel').classList.remove('open');
+      document.getElementById('dtc-btn').classList.remove('open');
+    }
+  });
+
+  document.getElementById('dtc-search').addEventListener('input', e => {
+    renderDtcList(e.target.value);
+  });
+  document.getElementById('dtc-search').addEventListener('click', e => e.stopPropagation());
+
+  document.getElementById('dtc-select-all').addEventListener('click', e => {
+    e.stopPropagation();
+    const term = document.getElementById('dtc-search').value.toLowerCase();
+    allDtcOptions.filter(d => !term || d.id.includes(term) || d.name.toLowerCase().includes(term))
+      .forEach(d => selectedDtcs.add(d.id));
+    renderDtcList(document.getElementById('dtc-search').value);
+    updateDtcBtn();
+    applyFilters();
+  });
+
+  document.getElementById('dtc-clear').addEventListener('click', e => {
+    e.stopPropagation();
+    selectedDtcs.clear();
+    renderDtcList(document.getElementById('dtc-search').value);
+    updateDtcBtn();
+    applyFilters();
+  });
+
+  // ── Filters ──────────────────────────────────────────────────────────────
+  function populateFilters() {
+    const ecus = [...new Set(allEvents.map(e => e.ecuAddress).filter(Boolean))].sort();
+    const events = [...new Set(allEvents.map(e => e.name).filter(Boolean))].sort();
+
+    const ecuSel = document.getElementById('ecu-filter');
+    ecuSel.innerHTML = '<option value="">All ECUs</option>';
+    ecus.forEach(ecu => { const o = document.createElement('option'); o.value = ecu; o.textContent = `0x${ecu.toUpperCase()}`; ecuSel.appendChild(o); });
+
+    const evSel = document.getElementById('event-filter');
+    evSel.innerHTML = '<option value="">All Events</option>';
+    events.forEach(ev => { const o = document.createElement('option'); o.value = ev; o.textContent = ev; evSel.appendChild(o); });
+
+    // Collect unique DTCs from fault events
+    const dtcMap = new Map();
+    allEvents.forEach(ev => {
+      const id = getDtcId(ev);
+      if (id && !dtcMap.has(id)) dtcMap.set(id, getDtcName(ev));
+    });
+    allDtcOptions = [...dtcMap.entries()].sort((a,b) => a[0].localeCompare(b[0]))
+      .map(([id, name]) => ({ id, name }));
+    selectedDtcs.clear();
+    updateDtcBtn();
+  }
+
+  document.getElementById('ecu-filter').addEventListener('change', applyFilters);
+  document.getElementById('event-filter').addEventListener('change', applyFilters);
+  document.getElementById('search-input').addEventListener('input', applyFilters);
+
+  function applyFilters() {
+    const ecuVal   = document.getElementById('ecu-filter').value;
+    const evVal    = document.getElementById('event-filter').value;
+    const search   = document.getElementById('search-input').value.trim().toLowerCase();
+
+    const filtered = allEvents.filter(ev => {
+      if (ecuVal && ev.ecuAddress !== ecuVal) return false;
+      if (evVal  && ev.name !== evVal) return false;
+      if (selectedDtcs.size > 0) {
+        const id = getDtcId(ev);
+        if (!id || !selectedDtcs.has(id)) return false;
+      }
+      if (search) {
+        const hay = JSON.stringify(ev).toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+
+    document.getElementById('stats-bar').innerHTML =
+      `Showing <span>${filtered.length}</span> of <span>${allEvents.length}</span>`;
+
+    renderEvents(filtered);
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  function fmtTime(t) {
+    if (!t) return '—';
+    const s = parseFloat(t.seconds || 0);
+    const ns = parseFloat(t.nanos || 0);
+    return `${s.toFixed(0)}s ${(ns / 1e6).toFixed(0)}ms`;
+  }
+
+  function getVal(v) {
+    if (v.stringvalue  !== undefined) return { val: v.stringvalue,                  unit: '' };
+    if (v.boolvalue    !== undefined) return { val: v.boolvalue ? 'true' : 'false', unit: '' };
+    if (v.floatvalue   !== undefined) return { val: parseFloat(v.floatvalue).toPrecision(6).replace(/\.?0+$/, ''), unit: v.unit || '' };
+    if (v.int32value   !== undefined) return { val: String(v.int32value),            unit: v.unit || '' };
+    if (v.int64value   !== undefined) return { val: String(v.int64value),            unit: v.unit || '' };
+    if (v.uint32value  !== undefined) return { val: String(v.uint32value),           unit: v.unit || '' };
+    return { val: '—', unit: '' };
+  }
+
+  function badgeClass(name) {
+    if (!name) return 'badge-other';
+    const n = name.toLowerCase();
+    if (n.includes('fault')) return 'badge-fault';
+    if (n.includes('action')) return 'badge-action';
+    if (n.includes('pril')) return 'badge-pril';
+    return 'badge-other';
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Card summary ─────────────────────────────────────────────────────────
+  function buildSummary(ev) {
+    if (ev.name === 'dkFaultEvent') {
+      for (const pv of (ev.payloadValues || [])) {
+        const vals = pv.singles?.values || [];
+        const dtcId  = vals.find(v => v.name === 'dtcId')?.stringvalue || '';
+        const brief  = vals.find(v => v.name === 'briefDescription')?.stringvalue || '';
+        const status = vals.find(v => v.name === 'monitorStatus')?.stringvalue || '';
+        if (dtcId) {
+          const sc = status === 'failed' ? 'status-failed' : status === 'passed' ? 'status-passed' : '';
+          return `<span class="dtc-id">${escHtml(dtcId)}</span> `
+               + `<span class="highlight">${escHtml(pv.name || '')}</span> `
+               + `<span class="${sc}">${escHtml(status)}</span> — ${escHtml(brief)}`;
+        }
+      }
+    }
+    if (ev.name === 'dkActionUpdate') {
+      const pv = ev.payloadValues?.[0];
+      if (pv) {
+        const vals = pv.singles?.values || [];
+        const status  = vals.find(v => v.name === 'actionStatus')?.stringvalue || '';
+        const sc = status === 'active' ? 'status-failed' : '';
+        return `<span class="highlight">${escHtml(pv.name || '')}</span> `
+             + `— status: <span class="${sc}">${escHtml(status)}</span>`;
+      }
+    }
+    if (ev.name === 'dkPrilRequest') {
+      const addresses = (ev.payloadValues || []).flatMap(pv => pv.singles?.values || [])
+        .filter(v => v.name === 'ecuAddress').map(v => v.stringvalue).filter(Boolean);
+      return `PRIL requested for: ${addresses.map(a => `<span class="highlight">0x${a.toUpperCase()}</span>`).join(', ')}`;
+    }
+    return '';
+  }
+
+  // ── Card body builder ─────────────────────────────────────────────────────
+  function buildCardBody(ev) {
+    const parts = [];
+
+    // Meta row
+    parts.push(`<div class="meta-row">
+      <div>Schema: <span>${escHtml(ev.schemaVersion ?? '')}</span></div>
+      <div>Package: <span>${escHtml(ev.softwarePackageName ?? '')}</span></div>
+      <div>ECU: <span>0x${escHtml((ev.ecuAddress ?? '').toUpperCase())}</span></div>
+      <div>Event time: <span>${fmtTime(ev.eventTime)}</span></div>
+    </div>`);
+
+    for (const pv of (ev.payloadValues || [])) {
+      if (ev.name === 'dkFaultEvent') parts.push(buildFaultPayload(pv));
+      else if (ev.name === 'dkActionUpdate') parts.push(buildActionPayload(pv));
+      else if (ev.name === 'dkPrilRequest') parts.push(buildPrilPayload(pv));
+      else parts.push(buildGenericPayload(pv));
+    }
+
+    return parts.join('');
+  }
+
+  function buildFaultPayload(pv) {
+    const vals = pv.singles?.values || [];
+    const dtcId   = vals.find(v => v.name === 'dtcId')?.stringvalue;
+    const status  = vals.find(v => v.name === 'monitorStatus')?.stringvalue || '';
+    const brief   = vals.find(v => v.name === 'briefDescription')?.stringvalue || '';
+    const full    = vals.find(v => v.name === 'fullDescription')?.stringvalue || '';
+    const ecuAddr = vals.find(v => v.name === 'ecuAddress')?.stringvalue || '';
+
+    if (dtcId !== undefined) {
+      // This is the fault info block
+      const sc = status === 'failed' ? 'failed' : status === 'passed' ? 'passed' : '';
+      let html = `<div class="payload-section">
+        <div class="payload-header">Fault Info — ${escHtml(pv.name || '')}</div>
+        <div class="fault-info">
+          <div class="fi-label">DTC ID</div><div class="fi-value dtc">${escHtml(dtcId)}</div>
+          <div class="fi-label">ECU Address</div><div class="fi-value">0x${escHtml(ecuAddr.toUpperCase())}</div>
+          <div class="fi-label">Monitor Status</div><div class="fi-value ${sc}">${escHtml(status)}</div>
+          <div class="fi-label">Brief Description</div><div class="fi-value">${escHtml(brief)}</div>`;
+      if (full) html += `<div class="fi-label">Full Description</div><div class="fi-value">${escHtml(full)}</div>`;
+      html += `</div></div>`;
+      return html;
+    }
+
+    // Otherwise it's a snapshot or bitfield
+    if (pv.bitfield) return buildBitfieldBlock(pv);
+    return buildSnapshotBlock(pv);
+  }
+
+  const FAULT_CATEGORY = {
+    0:  'No Fault',
+    1:  'Bad Video Data',
+    2:  'Capture Timeout',
+    3:  'Deserializer Electrical Fault',
+    4:  'Deserializer Fault',
+    5:  'Deserializer Global Fault',
+    6:  'Deserializer Link Error',
+    7:  'Deserializer Pipeline Fault',
+    8:  'EEPROM Data Integrity Check Fault',
+    9:  'EEPROM Read Fault',
+    16: 'Frame Synchronization Error',
+    17: 'Initialization and Startup Fault',
+    18: 'Invalid Image Metadata',
+    19: 'Link Lock Fault',
+    20: 'Module Electrical Fault',
+    21: 'Safety Mechanism Check Fault',
+    22: 'Sensor Fault',
+    23: 'Sensor GPIO Test Fault',
+    24: 'Serializer Fault',
+    25: 'Serializer GPIO Test Fault',
+    32: 'System Fault',
+    33: 'Temperature out of range',
+    34: 'Unknown Driver Errors',
+    35: 'Vehicle Time Fault',
+  };
+
+  function buildBitfieldBlock(pv) {
+    const bf = pv.bitfield;
+    if (!bf) return '';
+    let bytes = [];
+    try {
+      const bin = atob(bf.data || '');
+      bytes = Array.from(bin).map(c => c.charCodeAt(0));
+    } catch { /* ignore decode errors */ }
+
+    const bitNames = bf.bitNames || [];
+    const items = bitNames.map((bitName, i) => {
+      const byteIdx = Math.floor(i / 8);
+      const bitPos  = i % 8;
+      const isSet   = bytes.length > byteIdx && !!(bytes[byteIdx] & (1 << bitPos));
+      return `<div class="snapshot-item${isSet ? ' bit-set' : ''}">
+        <span class="snap-name">${escHtml(bitName)}</span>
+        <span class="snap-val ${isSet ? 'bit-val-set' : 'bit-val-clear'}">${isSet ? '1' : '0'}</span>
+      </div>`;
+    }).join('');
+
+    const activeCount = bitNames.filter((_, i) => {
+      const byteIdx = Math.floor(i / 8);
+      return bytes.length > byteIdx && !!(bytes[byteIdx] & (1 << i % 8));
+    }).length;
+
+    // Combine all bits into a single decimal: kFaultBitOne = bit 0 (LSB), etc.
+    let combinedVal = 0;
+    bitNames.forEach((_, i) => {
+      const byteIdx = Math.floor(i / 8);
+      const bitPos  = i % 8;
+      if (bytes.length > byteIdx && (bytes[byteIdx] & (1 << bitPos))) {
+        combinedVal |= (1 << i);
+      }
+    });
+    const faultDesc = FAULT_CATEGORY[combinedVal];
+    const binaryStr = combinedVal.toString(2).padStart(bitNames.length || 8, '0').split('').reverse().join(''); // LSB first display
+    const decodedRow = `<div class="snapshot-item bit-decoded" style="grid-column:1/-1;border-color:#3a5068;background:#1b2b3a;">
+      <span class="snap-name" style="color:var(--text);">Decoded value</span>
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">0b${combinedVal.toString(2).padStart(bitNames.length || 8, '0')}</span>
+      <span class="snap-val" style="color:var(--blue-lt);">${combinedVal}</span>
+      <span class="snap-val" style="color:${faultDesc ? 'var(--green)' : 'var(--text-dimmer)'};">${escHtml(faultDesc || 'Unknown')}</span>
+    </div>`;
+
+    return `<div class="payload-section">
+      <div class="snapshot-name">🔢 ${escHtml(pv.name || bf.name || 'Bitfield')} &nbsp;<span style="font-size:10px;color:var(--text-dim)">(${bitNames.length} bits${activeCount ? `, <span style="color:var(--red)">${activeCount} set</span>` : ', none set'})</span></div>
+      <div class="snapshot-grid">${items}${decodedRow}</div>
+    </div>`;
+  }
+
+  function buildSnapshotBlock(pv) {
+    const snapVals = pv.singles?.values || [];
+    if (!snapVals.length) return '';
+
+    const items = snapVals.map(v => {
+      const { val, unit } = getVal(v);
+      const desc = v.fullDesc || v.name || '';
+      return `<div class="snapshot-item" title="${escHtml(desc)}">
+        <span class="snap-name">${escHtml(v.name || '')}</span>
+        <span class="snap-val">${escHtml(val)}</span>
+        ${unit && unit !== 'N/A' && unit !== '-' ? `<span class="snap-unit">${escHtml(unit)}</span>` : ''}
+      </div>`;
+    }).join('');
+
+    return `<div class="payload-section">
+      <div class="snapshot-name">📸 ${escHtml(pv.name || 'Snapshot')} (${snapVals.length} values)</div>
+      <div class="snapshot-grid">${items}</div>
+    </div>`;
+  }
+
+  function buildActionPayload(pv) {
+    const vals = pv.singles?.values || [];
+    const status  = vals.find(v => v.name === 'actionStatus')?.stringvalue || '';
+    const ctx     = vals.find(v => v.name === 'faultManagerContext')?.int32value;
+    const idx     = vals.find(v => v.name === 'itemIndex')?.int64value;
+    const counter = vals.find(v => v.name === 'actionRequestCounter')?.uint32value;
+    const sc = status === 'active' ? 'active' : 'inactive';
+
+    return `<div class="payload-section">
+      <div class="payload-header">Action — ${escHtml(pv.name || '')}</div>
+      <div class="action-info">
+        <div class="ai-label">Action Status</div><div class="ai-value ${sc}">${escHtml(status)}</div>
+        ${ctx !== undefined ? `<div class="ai-label">Fault Manager Context</div><div class="ai-value">${ctx}</div>` : ''}
+        ${idx !== undefined ? `<div class="ai-label">Item Index</div><div class="ai-value">${idx}</div>` : ''}
+        ${counter !== undefined ? `<div class="ai-label">Request Counter</div><div class="ai-value">${counter}</div>` : ''}
+        <div class="ai-label">Payload Time</div><div class="ai-value">${fmtTime(pv.payloadTime)}</div>
+      </div>
+    </div>`;
+  }
+
+  function buildPrilPayload(pv) {
+    const vals = pv.singles?.values || [];
+    const ecuAddr = vals.find(v => v.name === 'ecuAddress')?.stringvalue || '';
+    const state   = vals.find(v => v.name === 'prilRequestState')?.boolvalue;
+
+    const sc = state ? 'pril-state-on' : 'pril-state-off';
+    const label = state ? 'ON' : 'OFF';
+
+    return `<div class="pril-item">
+      <span class="pril-ecu">0x${escHtml(ecuAddr.toUpperCase())}</span>
+      <span class="${sc}">${label}</span>
+      <span class="pril-time">${fmtTime(pv.payloadTime)}</span>
+    </div>`;
+  }
+
+  function buildPrilEvent(ev) {
+    const items = (ev.payloadValues || []).map(buildPrilPayload).join('');
+    return `<div class="payload-section">
+      <div class="payload-header">PRIL Requests</div>
+      <div class="pril-list">${items}</div>
+    </div>`;
+  }
+
+  function buildGenericPayload(pv) {
+    const vals = pv.singles?.values || [];
+    if (!vals.length) return '';
+    const items = vals.map(v => {
+      const { val } = getVal(v);
+      return `<div class="kv-item"><span class="kv-key">${escHtml(v.name || '')}</span><span class="kv-val">${escHtml(val)}</span></div>`;
+    }).join('');
+    return `<div class="payload-section">
+      <div class="payload-header">${escHtml(pv.name || 'Payload')}</div>
+      <div class="value-kv">${items}</div>
+    </div>`;
+  }
+
+  // ── Renderer ─────────────────────────────────────────────────────────────
+  function renderEvents(events) {
+    const list = document.getElementById('event-list');
+
+    if (!events.length) {
+      list.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><div>No events match the current filters</div></div>`;
+      return;
+    }
+
+    const html = events.map((ev, i) => {
+      const bc = badgeClass(ev.name);
+      const summary = buildSummary(ev);
+
+      // For dkPrilRequest the body is slightly different
+      let bodyContent;
+      if (ev.name === 'dkPrilRequest') {
+        const meta = `<div class="meta-row">
+          <div>Schema: <span>${escHtml(ev.schemaVersion ?? '')}</span></div>
+          <div>Package: <span>${escHtml(ev.softwarePackageName ?? '')}</span></div>
+          <div>ECU: <span>0x${escHtml((ev.ecuAddress ?? '').toUpperCase())}</span></div>
+          <div>Event time: <span>${fmtTime(ev.eventTime)}</span></div>
+        </div>`;
+        bodyContent = meta + buildPrilEvent(ev);
+      } else {
+        bodyContent = buildCardBody(ev);
+      }
+
+      return `<div class="event-card" data-idx="${i}">
+        <div class="card-header">
+          <span class="event-time">${fmtTime(ev.eventTime)}</span>
+          <span class="ecu-badge">0x${escHtml((ev.ecuAddress || '').toUpperCase())}</span>
+          <span class="event-name-badge ${bc}">${escHtml(ev.name || 'unknown')}</span>
+          <span class="card-summary">${summary}</span>
+          <span class="expand-arrow">▶</span>
+        </div>
+        <div class="card-body">${bodyContent}</div>
+      </div>`;
+    }).join('');
+
+    list.innerHTML = html;
+
+    // Toggle expand
+    list.querySelectorAll('.card-header').forEach(h => {
+      h.addEventListener('click', () => h.closest('.event-card').classList.toggle('expanded'));
+    });
+  }
+</script>
+</body>
+</html>
