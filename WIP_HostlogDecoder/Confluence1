@@ -1,0 +1,52 @@
+hostlog online fetch-tdf --host 169.254.4.10 --output hostlog
+
+
+
+
+hostlog online fetch-tdf --host 169.254.4.10 --output hostlog
+
+
+
+
+This command creates a folder in /hostlog-client/hostlog/tdf/ that follows the naming convention: tdf-YYYYMMDD-HHMMSSSS_vcu
+
+Start Logging:
+
+Replace the folder (underlined and marked in red) with the name of the tdf folder that you created with the first command. 
+
+Change the --max-time-s flag according to how long you want to collect hostlogs
+
+hostlog online start-logging -h 169.254.4.10 -o hostlog --max-time-s 100 --topics  *:*  --to-binary -d ./hostlog/tdf/tdf-20240701_132502048_vcu
+
+hostlog online start-logging -h 169.254.4.10 -o hostlog --max-time-s 100 --topics  *:*  --to-binary -d ./hostlog/tdf/tdf-20240701_132502048_vcu
+
+
+
+
+The logs collected will show up in /hostlog-client/hostlog/bin/
+
+Decoding the Hostlogs:
+
+Before one can analyse the logs we need to decode them. 
+
+First we need to know the software version of the Zenseact module, which can be found in /etc/apps/cs-manifest.yml in HPA
+
+Secondly, we need to retrieve the correct dcf_decoder in https://ara-artifactory.volvocars.biz/artifactory/AD-Zenuity-External-LTS/dcf_decoder/
+
+Searching the last four digits should be sufficient, i.e 2637 in this example.
+
+Run Python file
+
+Download the Python file below for decoding multiple hostlogs at the same time. 
+
+Running the decoder python file requires WSL installed and WSL added to PATH. WSL can be installed by opening powershell/cmd in admin mode and running the command below, and then restarting your computer. WSL should be added to PATH automatically, if not then do it manually.
+
+wsl --install
+
+Then simply execute the python file from Windows (not WSL)
+
+py "batch_decoder_20240603 2.py"
+
+Select the bin folder /hostlog-client/hostlog/bin, select the dcf_decoder that you downloaded before and start the decoding  
+
+This will take some time... The decoded files should appear in /hostlog-client/hostlog/bin/zen_decoded/

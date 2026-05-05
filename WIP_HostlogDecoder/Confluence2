@@ -1,0 +1,207 @@
+
+
+
+There are various scripts and GUI tools available to assist with hostlog decoding through clicking. However, these tools may frequently fail due to a range of underlying issues. This guide is intended to help you understand the decoding workflow behind the curtain and provide quick troubleshooting steps when limited support is available.
+
+This page contains four parts:
+    - pcap decoding to binary
+    - Binary to vcc hdf5
+    - Binary to zen hdf5
+    - Common errors
+
+pcap decoding to binary
+
+pre-conditions: hostlog-client, pcap file to decode
+
+run the following command in cmd under hostlog-client folder and replace the actual paths with the parts with {}
+
+set_path.bat
+hostlog.bat offline pcap-to-binary --output {folder-path} {path-to-pcap-file}
+
+
+
+
+More flags can be used with the command line if needed
+
+ Parse PCAP(s) to binary file(s).
+ Definitions are needed in order to handle partial DCF messages, both when reading PCAPs and writing complete messages to binary
+ files. If definitions cannot be extract from given PCAPs, then definitions must be provided using option '--definitions'. Default
+ output is a single binary file. If file size grows above 1GB, the file is split into additional file(s). The output file name
+ indexed to indicate order of creation.
+ N.B. PCAP_PATH supports CSV for both files and/or directories. Given files will be processed in the stated order. Files scanned
+ from given directories are sorted in natural order.
+
+╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --output         -o  TEXT                     Path to output directory. Overrides configured path.                              │
+│ --source-port        INTEGER                  Port used for filtering hostlog data from pcap file. Overrides configuration.     │
+│ --source-host        TEXT                     Comma separated list of host:port pairs for filtering hostlog data from pcap      │
+│                                               file. Overrides pcap configuration data. e.g. 1.2.3.4:1,5.6.7.8:2.                │
+│ --linktype-null                               Indicate that the PCAP source file is generated with data from loopback. !!!!!    │
+│                                               N.B. Only for integration test. !!!!!                                             │
+│ --appconfig          TEXT                     A configuration that overrides the default application configuration. The         │
+│                                               configuration can be a file path or string. The configuration parameter(s) to     │
+│                                               override must match the original configuration structure. Example: --appconfig    │
+│                                               "output.files.enable_hdf5_named_datasets=true,client.protocol_version=2"          │
+│ --statistics     -s  [off|on|basic|advanced]  Type of the statistics to run. 'off' or 'on' or 'basic' or 'advanced'. If not     │
+│                                               provided, equals to 'off'.                                                        │
+│ --definitions    -d  TEXT                     Path to Topic Definition File(s) describing all topics that can be subscribed to. │
+│                                               Supported formats are single value or comma-separated list with values. Supported │
+│                                               values are; 1. Directory path, all its *.yaml|*.yml files will be loaded.2.       │
+│                                               single file path. Example:                                                        │
+│                                               'my/dir/path,my/first/path1.yaml,my/second/path2.yaml'. Optional: If omitted,     │
+│                                               definitions are extracted from PCAPs.                                             │
+│ --one-to-one                                  If set, output binary files are mapped with name to input pcap files. I.e same    │
+│                                               name as input pcap but another suffix, my-file.pcap -> my-file.bin.               │
+│ --help                                        Show this message and exit.                                                       │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+Binary to vcc hdf5
+
+pre-conditions: hostlog-client, tdf files, binary file to decode
+
+run the following command in cmd under hostlog-client folder and replace the actual paths with the parts with {}
+
+hostlog.bat offline binary-playback --binary-files {path-to-binary-file} --output {path-to-output} --definitions {path-to-tdf-folder} --to-hdf5
+
+This flag is highly recommended to add:
+
+--appconfig "output.files.hdf5_decode_enum_as_int=False"  # the decoded values are enum
+
+--appconfig "output.files.enable_hdf5_named_datasets=True" # topic names are human-readable instead of topic-xxxx
+
+if you would like to have both, the syntax is:
+
+
+
+hostlog.bat offline binary-playback --binary-files {path-to-binary-file} --output {path-to-output} --definitions {path-to-tdf-folder} --to-hdf5 --appconfig "output.files.hdf5_decode_enum_as_int=False,output.files.enable_hdf5_named_datasets=True"
+
+
+
+
+More flags can be used with the command line if needed
+
+ Re-play previously recorded binary files.
+
+╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --binary-files                     TEXT                     Comma-separated list of binary files and/or folders If a folder  │
+│                                                                is given ALL *.bin and *.bin.gz files will be included.  Files   │
+│                                                                discovered from a directory will be sorted in natural order.     │
+│                                                                Multiple files stated with full path will be read in given       │
+│                                                                order. Fractional file names are supported. I.e                  │
+│                                                                '/my/path/binfileprefix' will include all binfiles starting with │
+│                                                                'binfileprefix'                                                  │
+│                                                                [required]                                                       │
+│    --output                       -o  TEXT                     Path to output directory. Overrides configured path.             │
+│    --definitions                  -d  TEXT                     Path to Topic Definition File(s) describing all topics that can  │
+│                                                                be subscribed to. Supported formats are single value or          │
+│                                                                comma-separated list with values. Supported values are; 1.       │
+│                                                                Directory path, all its *.yaml|*.yml files will be loaded.2.     │
+│                                                                single file path. Example:                                       │
+│                                                                'my/dir/path,my/first/path1.yaml,my/second/path2.yaml'.          │
+│                                                                Optional. If omitted, only --to-binary output is supported. To   │
+│                                                                produce other outputs, topic definitions are required.           │
+│    --topics                       -t  TEXT                     Topic subscriptions as a comma separated string                  │
+│                                                                '<chId>:<topicId>'. E.g.                                         │
+│                                                                '1:0,1:2,2:1,2-5:3-6,4000:*,ultra*:*'.Ranges are supported, e.g  │
+│                                                                '1-10:0-5,11:0-10,12-15:0'.Wildcards are supported, e.g '2100:*, │
+│                                                                zen_qm_src_vision_output:*, zen_*:*' (N.B Selected topics must   │
+│                                                                be described in TDFs). Optional. If not provided, all topics in  │
+│                                                                given TDFs will be subscribed to.                                │
+│    --to-text                          TEXT                     Outputs hostlog data in text format. Option can be given as a    │
+│                                                                flag without argument, i.e. --to-text, causing the output to be  │
+│                                                                written to the output folder. If an optional path, including     │
+│                                                                file name, is given, e.g. --to-text [path/filename.txt], the     │
+│                                                                output will be written to that path instead. Existing files will │
+│                                                                be overwritten.                                                  │
+│    --to-hdf5                          TEXT                     Outputs hostlog data in hdf5 format. Option can be given as a    │
+│                                                                flag without argument, i.e. --to-hdf5, causing the output to be  │
+│                                                                written to the output folder. If an optional path, including     │
+│                                                                file name, is given, e.g. --to-hdf5 [path/filename.hdf5], the    │
+│                                                                output will be written to that path instead. Existing files will │
+│                                                                be overwritten. If the given binary files shares the same        │
+│                                                                prefix, created hdf5 file will have the same name.               │
+│    --to-binary                        TEXT                     Outputs hostlog data in binary format. Option can be given as a  │
+│                                                                flag without argument, i.e. --to-binary, causing the output to   │
+│                                                                be written to the output folder. If an optional path, including  │
+│                                                                file name, is given, e.g. --to-binary [path/filename.bin], the   │
+│                                                                output will be written to that path instead. Existing files will │
+│                                                                be overwritten.                                                  │
+│    --to-message-server                                         If set, starts the message server allowing external applications │
+│                                                                to connect to hostlog client to receive decoded messages.        │
+│    --appconfig                        TEXT                     A configuration that overrides the default application           │
+│                                                                configuration. The configuration can be a file path or string.   │
+│                                                                The configuration parameter(s) to override must match the        │
+│                                                                original configuration structure. Example: --appconfig           │
+│                                                                "output.files.enable_hdf5_named_datasets=true,client.protocol_v… │
+│    --max-messages                     INTEGER                  Maximum number of messages to log. Mutually exclusive with       │
+│                                                                option groups 'Maximum amount of logged data' and 'Maximum       │
+│                                                                logging time'.                                                   │
+│    --statistics                   -s  [off|on|basic|advanced]  Type of the statistics to run. 'off' or 'on' or 'basic' or       │
+│                                                                'advanced'. If not provided, equals to 'off'.                    │
+│    --real-time                                                 If set, plays back messages with the same timings as they were   │
+│                                                                received.                                                        │
+│    --loops                            INTEGER                  Number of loops to play back binary files. Default 1.            │
+│    --emulated-loop-mode                                        If set, generates counter and timestamp values to make           │
+│                                                                subsequent loops more realistic.                                 │
+│    --offset-timestamps-ns             INTEGER                  If set, message timestamps will be offset (either backward or    │
+│                                                                forward) by the provided value before playing them back. Default │
+│                                                                0.                                                               │
+│    --include-timestamps-range-ns      INTEGER...               If set, only messages within the time range are considered from  │
+│                                                                binary files. If you want to know about the min and max          │
+│                                                                timestamps, please run offline binary-analysis command.          │
+│    --max-time-s                       INTEGER                  N.B This option is mutually exclusive with options:              │
+│                                                                ['--max-time-m', '--max-time-h']. Maximum logging time in        │
+│                                                                seconds.                                                         │
+│    --max-time-m                       FLOAT                    N.B This option is mutually exclusive with options:              │
+│                                                                ['--max-time-s', '--max-time-h']. Maximum logging time in        │
+│                                                                minutes.                                                         │
+│    --max-time-h                       FLOAT                    N.B This option is mutually exclusive with options:              │
+│                                                                ['--max-time-s', '--max-time-m']. Maximum logging time in hours. │
+│    --max-kbytes                       FLOAT                    N.B This option is mutually exclusive with options:              │
+│                                                                ['--max-mbytes', '--max-gbytes']. Maximum number of kilobytes to │
+│                                                                log.                                                             │
+│    --max-mbytes                       FLOAT                    N.B This option is mutually exclusive with options:              │
+│                                                                ['--max-kbytes', '--max-gbytes']. Maximum number of megabytes to │
+│                                                                log.                                                             │
+│    --max-gbytes                       FLOAT                    N.B This option is mutually exclusive with options:              │
+│                                                                ['--max-kbytes', '--max-mbytes']. Maximum number of gigabytes to │
+│                                                                log.                                                             │
+│    --help                                                      Show this message and exit.                                      │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+
+
+
+
+Binary to zen hdf5
+
+pre-conditions: wsl, ad_adas decoder, binary file to decode
+
+Download the decoder matches the ad-adas-a version from Index of AD-Zenuity-External-LTS/dcf_decoder or Index of AD-Zenuity-External-LTS/zenseact/ad-adas-decoder or wherever is available and unzip it.
+
+Since dcf_decoder is deprecated, only ad_adas decoder is shown.
+
+run the following command in wsl under decoder folder and replace the actual paths with the parts with {}
+
+LD_LIBRARY_PATH={decoder_lib_path} ad_adas_decoder --input_file={bin_wsl_path} --output_folder={bin_wsl_out_path} --overwrite=true --ignore_checksum=true
+{decoder_lib_path} is the path that has libhdf5.so and libhdf5_cpp.so. It is "." if they are in the same folder that runs the command.
+{decoder_wsl_path} is where ad_adas File is.
+The paths here should all be Linux format.
+Common errors
+
+If such or similar error pops up, you need to cd to hostlog-client folder.
+
+set_path.bat : The term 'set_path.bat' is not recognized as the name of a cmdlet, function, script file, or operable program. Chec
+k the spelling of the name, or if a path was included, verify that the path is correct and try again.
+
+
+
+
+This ValueError indicates that wsl is not installed. Follow the steps below

@@ -388,11 +388,12 @@
 
       <div id="drop-zone">
         Drop DSA log file here
-        <div class="hint">or click Browse below &mdash; .txt files</div>
+        <div class="hint">or click Browse below &mdash; .txt files &mdash; or paste with Ctrl+V</div>
       </div>
 
       <div id="toolbar">
         <button id="btn-browse">Browse&hellip;</button>
+        <button id="btn-clear">Clear</button>
         <span id="status">No file loaded.</span>
         <button id="btn-save" disabled>&#8595; Save filtered file</button>
       </div>
@@ -545,6 +546,7 @@ function highlightLog(text) {
 // ── UI ────────────────────────────────────────────────────────────────────────
 const dropZone     = document.getElementById("drop-zone");
 const btnBrowse    = document.getElementById("btn-browse");
+const btnClear     = document.getElementById("btn-clear");
 const btnSave      = document.getElementById("btn-save");
 const statusEl     = document.getElementById("status");
 const output       = document.getElementById("output");
@@ -557,25 +559,42 @@ let lastFileName = "", filteredContent = "";
 
 function setStatus(msg) { statusEl.textContent = msg; }
 
+function resetUI() {
+  lastFileName = "";
+  filteredContent = "";
+  output.innerHTML = "";
+  btnSave.disabled = true;
+  setStatus("No file loaded.");
+  sbFile.textContent = "DSA Log Filter";
+  sbLines.textContent = "";
+  editorFname.textContent = "filtered output";
+  dropZone.innerHTML = "Drop DSA log file here\n        <div class=\"hint\">or click Browse below &mdash; .txt files &mdash; or paste with Ctrl+V</div>";
+  dropZone.className = "";
+}
+
+function processText(rawText, sourceName) {
+  filteredContent  = filterLog(rawText);
+  lastFileName     = sourceName.replace(/\.[^.]+$/, "");
+  output.innerHTML = highlightLog(filteredContent);
+  btnSave.disabled = false;
+
+  const lines = filteredContent.split("\n").length;
+  setStatus("Loaded: " + sourceName);
+  sbFile.textContent  = sourceName;
+  sbLines.textContent = lines.toLocaleString() + " lines";
+  editorFname.textContent = lastFileName + "_filtered.txt";
+
+  dropZone.innerHTML = `<div>&#10004; ${sourceName}</div><div class="hint">Drop another file or paste text to replace</div>`;
+  dropZone.className = "done";
+}
+
 function processFile(file) {
   if (!file) return;
   setStatus("Processing " + file.name + " …");
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      filteredContent  = filterLog(e.target.result);
-      lastFileName     = file.name.replace(/\.[^.]+$/, "");
-      output.innerHTML = highlightLog(filteredContent);
-      btnSave.disabled = false;
-
-      const lines = filteredContent.split("\n").length;
-      setStatus("Loaded: " + file.name);
-      sbFile.textContent  = file.name;
-      sbLines.textContent = lines.toLocaleString() + " lines";
-      editorFname.textContent = lastFileName + "_filtered.txt";
-
-      dropZone.innerHTML = `<div>&#10004; ${file.name}</div><div class="hint">Drop another file to replace</div>`;
-      dropZone.className = "done";
+      processText(e.target.result, file.name);
     } catch (err) {
       setStatus("Error: " + err.message);
     }
@@ -601,6 +620,22 @@ btnBrowse.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
   if (fileInput.files[0]) processFile(fileInput.files[0]);
   fileInput.value = "";
+});
+
+// Clear and restore initial state
+btnClear.addEventListener("click", resetUI);
+
+// Paste text from clipboard (Ctrl+V)
+document.addEventListener("paste", e => {
+  const text = e.clipboardData?.getData("text/plain");
+  if (!text || !text.trim()) return;
+  e.preventDefault();
+  try {
+    setStatus("Processing pasted text …");
+    processText(text, "pasted_log.txt");
+  } catch (err) {
+    setStatus("Error: " + err.message);
+  }
 });
 
 // Save
