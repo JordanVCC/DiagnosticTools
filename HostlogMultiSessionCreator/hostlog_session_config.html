@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hostlog Multi-Session Config Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-base:       #1e1e1e;
+    --bg-panel:      #252526;
+    --bg-card:       #2d2d30;
+    --bg-input:      #1e1e1e;
+    --bg-hover:      #2a2d2e;
+    --bg-active:     #37373d;
+    --border:        #3c3c3c;
+    --border-focus:  #007acc;
+    --text:          #d4d4d4;
+    --text-dim:      #858585;
+    --text-dimmer:   #4d4d4d;
+    --accent:        #007acc;
+    --accent-hover:  #1a8ad4;
+    --accent-text:   #ffffff;
+    --green:         #4ec9b0;
+    --green-bg:      #1b3a35;
+    --green-border:  #2d6b5e;
+    --warn:          #dcdcaa;
+    --warn-bg:       #3b3a21;
+    --warn-border:   #6a6842;
+    --error:         #f48771;
+    --radius:        4px;
+    --font-ui:       "Segoe UI", system-ui, sans-serif;
+    --font-mono:     "Cascadia Code", "Fira Code", Consolas, monospace;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    background: var(--bg-base);
+    color: var(--text);
+    padding: 14px;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .header {
+    background: #323233;
+    border-bottom: 1px solid #111;
+    padding: 10px 16px;
+  }
+
+  .header h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--text);
+  }
+
+  .header p {
+    margin-top: 4px;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
+  .content {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 800px) {
+    .content { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+
+  .panel h2 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+
+  .form-group {
+    margin-bottom: 10px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 3px;
+    font-weight: 600;
+  }
+
+  .form-group > label[title] {
+    cursor: help;
+    border-bottom: 1px dotted var(--text-dimmer);
+    display: inline-block;
+    margin-bottom: 4px;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  select {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font-mono);
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 400;
+  }
+
+  .checkbox-group input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+
+  .session-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+
+  .session-card h3 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--green);
+    margin-bottom: 8px;
+  }
+
+  .session-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .session-toggle input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+
+  .session-toggle label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .disabled-session {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /* Output panel */
+  .output-panel {
+    grid-column: 1 / -1;
+  }
+
+  .output-area {
+    width: 100%;
+    min-height: 280px;
+    resize: vertical;
+    font: 12px/1.5 var(--font-mono);
+    color: var(--text);
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-input);
+    white-space: pre;
+    overflow: auto;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  button {
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 7px 14px;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--accent-text);
+    background: var(--accent);
+    transition: background 120ms ease;
+  }
+
+  button:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--accent);
+  }
+
+  .btn-secondary:hover {
+    background: var(--bg-hover);
+  }
+
+  .hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+
+  .command-box {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--green-border);
+    border-radius: var(--radius);
+    font: 12px/1.5 var(--font-mono);
+    color: var(--green);
+    word-break: break-all;
+  }
+
+  .preset-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  .preset-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    background: var(--bg-active);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .preset-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Warnings banner */
+  .warnings-banner {
+    grid-column: 1 / -1;
+    display: none;
+  }
+
+  .warnings-banner.visible {
+    display: block;
+  }
+
+  .warning-item {
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .warning-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .warning-item.level-error {
+    background: #3b1f1f;
+    border: 1px solid #6b2c2c;
+    color: #f48771;
+  }
+
+  .warning-item.level-warn {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn);
+  }
+
+  .warning-icon {
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+  }
+</style>
+</head>
+<body>
+<main class="container">
+  <header class="header">
+    <h1>Hostlog Multi-Session Config Generator</h1>
+    <p>Generate YAML session config files for hostlog to capture HPA and HPB simultaneously.</p>
+  </header>
+
+  <section class="content">
+    <!-- Warnings -->
+    <div class="warnings-banner" id="warningsBanner" role="alert" aria-live="polite"></div>
+
+    <!-- Presets -->
+    <div class="panel output-panel">
+      <h2>Quick Presets</h2>
+      <div class="preset-row">
+        <button type="button" class="preset-btn" onclick="applyPreset('hpa_only')">HPA Only</button>
+        <button type="button" class="preset-btn" onclick="applyPreset('hpb_only')">HPB Only</button>
+        <button type="button" class="preset-btn" onclick="applyPreset('hpa_hpb')">HPA + HPB</button>
+        <button type="button" class="preset-btn" onclick="applyPreset('hpa_hpb_binary')">HPA + HPB (Binary, No Decode)</button>
+      </div>
+    </div>
+
+    <!-- Global Options -->
+    <div class="panel">
+      <h2>Global Options</h2>
+      <div class="form-group">
+        <label title="Directory where all session output files will be saved. Can also be overridden via CLI --output. Hostlog default is ~/hostlog_client.">Output Directory</label>
+        <input type="text" id="globalOutput" value="~/hostlog_client" placeholder="~/hostlog_client">
+      </div>
+      <div class="form-group">
+        <label title="When enabled, binary/HDF5/text outputs from all sessions are merged into combined files. Default: true.">Enable Merged Outputs</label>
+        <select id="globalMerge">
+          <option value="true">true</option>
+          <option value="false" selected>false</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label title="Whether to send Topic Definition Files (TDFs) and related config info before logging starts. Default: true.">Send TDFs</label>
+        <select id="globalSendTdfs">
+          <option value="true" selected>true</option>
+          <option value="false">false</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label title="Maximum size in megabytes before the binary capture file is split into a new file.">Binary Capture Split (MB)</label>
+        <input type="number" id="globalSplitMb" value="10240" min="1">
+      </div>
+    </div>
+
+    <!-- Session: HPA -->
+    <div class="panel">
+      <h2>Sessions</h2>
+
+      <!-- HPA -->
+      <div class="session-card" id="hpaCard">
+        <div class="session-toggle">
+          <input type="checkbox" id="hpaEnabled" checked onchange="toggleSession('hpa')">
+          <label for="hpaEnabled">HPA Session</label>
+        </div>
+        <div id="hpaFields">
+          <div class="row">
+            <div class="form-group">
+              <label title="IP address of the HPA host. Must match the IP shown in Parallel Diag. Default: 127.0.0.1">Host IP</label>
+              <input type="text" id="hpaHost" value="169.254.4.10">
+            </div>
+            <div class="form-group">
+              <label title="Port number for HPA. Default is 30401.">Port</label>
+              <input type="number" id="hpaPort" value="30401">
+            </div>
+          </div>
+          <div class="form-group">
+            <label title="Topic subscriptions. Use 'all' for everything, or specify channel:topic pairs like '2018:*' or '1:0,1:2'. Wildcards and ranges supported.">Topics</label>
+            <input type="text" id="hpaTopics" value="all" placeholder="all, or 2018:*, or 1:0,1:2">
+          </div>
+          <div class="form-group">
+            <label title="Choose which output formats to generate.">Outputs</label>
+            <div class="checkbox-group">
+              <label title="Raw binary capture. Smallest overhead, fastest. Good for later offline decoding."><input type="checkbox" id="hpaToBinary" checked> Binary</label>
+              <label title="HDF5 format. Decoded and structured, ready for analysis in Python/MATLAB. Requires decoding."><input type="checkbox" id="hpaToHdf5"> HDF5</label>
+              <label title="Human-readable text log output."><input type="checkbox" id="hpaToText"> Text</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label title="Additional logging options.">Options</label>
+            <div class="checkbox-group">
+              <label title="Skip decoding during capture. Reduces CPU load and is faster. Use with Binary output for later offline decoding."><input type="checkbox" id="hpaNoDecode" checked> No Decode</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label title="Path to Topic Definition Files (TDFs). Leave empty to auto-fetch from the host before logging starts.">Definitions (optional path)</label>
+            <input type="text" id="hpaDefs" value="" placeholder="Leave empty for auto-fetch">
+          </div>
+          <div class="row-3">
+            <div class="form-group">
+              <label title="Max seconds to wait if the host is unavailable or unresponsive. Default: 10s.">Timeout (s)</label>
+              <input type="number" id="hpaTimeout" value="10" min="1">
+            </div>
+            <div class="form-group">
+              <label title="Level of statistics to collect during logging. 'basic' shows message counts, 'advanced' adds timing info.">Statistics</label>
+              <select id="hpaStats">
+                <option value="off">off</option>
+                <option value="basic" selected>basic</option>
+                <option value="advanced">advanced</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label title="Automatically stop logging after this many minutes. Leave empty for no limit (manual stop with Ctrl+C).">Max Time (min)</label>
+              <input type="number" id="hpaMaxTime" value="" placeholder="No limit">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HPB -->
+      <div class="session-card" id="hpbCard">
+        <div class="session-toggle">
+          <input type="checkbox" id="hpbEnabled" checked onchange="toggleSession('hpb')">
+          <label for="hpbEnabled">HPB Session</label>
+        </div>
+        <div id="hpbFields">
+          <div class="row">
+            <div class="form-group">
+              <label title="IP address of the HPB host. Must match the IP shown in Parallel Diag. Default: 127.0.0.1">Host IP</label>
+              <input type="text" id="hpbHost" value="169.254.4.10">
+            </div>
+            <div class="form-group">
+              <label title="Port number for HPB. Use 41001 for HPB (differs from HPA's 30401).">Port</label>
+              <input type="number" id="hpbPort" value="41001">
+            </div>
+          </div>
+          <div class="form-group">
+            <label title="Topic subscriptions. Use 'all' for everything, or specify channel:topic pairs like '2018:*' or '1:0,1:2'. Wildcards and ranges supported.">Topics</label>
+            <input type="text" id="hpbTopics" value="all" placeholder="all, or 2018:*, or 1:0,1:2">
+          </div>
+          <div class="form-group">
+            <label title="Choose which output formats to generate.">Outputs</label>
+            <div class="checkbox-group">
+              <label title="Raw binary capture. Smallest overhead, fastest. Good for later offline decoding."><input type="checkbox" id="hpbToBinary" checked> Binary</label>
+              <label title="HDF5 format. Decoded and structured, ready for analysis in Python/MATLAB. Requires decoding."><input type="checkbox" id="hpbToHdf5"> HDF5</label>
+              <label title="Human-readable text log output."><input type="checkbox" id="hpbToText"> Text</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label title="Additional logging options.">Options</label>
+            <div class="checkbox-group">
+              <label title="Skip decoding during capture. Reduces CPU load and is faster. Use with Binary output for later offline decoding."><input type="checkbox" id="hpbNoDecode" checked> No Decode</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label title="Path to Topic Definition Files (TDFs). Leave empty to auto-fetch from the host before logging starts.">Definitions (optional path)</label>
+            <input type="text" id="hpbDefs" value="" placeholder="Leave empty for auto-fetch">
+          </div>
+          <div class="row-3">
+            <div class="form-group">
+              <label title="Max seconds to wait if the host is unavailable or unresponsive. Default: 10s.">Timeout (s)</label>
+              <input type="number" id="hpbTimeout" value="10" min="1">
+            </div>
+            <div class="form-group">
+              <label title="Level of statistics to collect during logging. 'basic' shows message counts, 'advanced' adds timing info.">Statistics</label>
+              <select id="hpbStats">
+                <option value="off">off</option>
+                <option value="basic" selected>basic</option>
+                <option value="advanced">advanced</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label title="Automatically stop logging after this many minutes. Leave empty for no limit (manual stop with Ctrl+C).">Max Time (min)</label>
+              <input type="number" id="hpbMaxTime" value="" placeholder="No limit">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="panel output-panel">
+      <h2>Generated Config</h2>
+      <div class="btn-row">
+        <button type="button" onclick="generate()">Generate YAML</button>
+        <button type="button" class="btn-secondary" onclick="copyToClipboard()">Copy to Clipboard</button>
+        <button type="button" class="btn-secondary" onclick="downloadYaml()">Download .yaml</button>
+      </div>
+      <textarea class="output-area" id="output" readonly placeholder="Click 'Generate YAML' to create the session config..."></textarea>
+      <div class="hint">Save this file as <code>.yaml</code> and run: <code>hostlog online start-logging --session-config ./my_config.yaml</code></div>
+      <div class="command-box" id="commandBox">hostlog online start-logging --session-config ./session_config.yaml</div>
+    </div>
+  </section>
+</main>
+
+<script>
+function toggleSession(prefix) {
+  const enabled = document.getElementById(prefix + 'Enabled').checked;
+  const fields = document.getElementById(prefix + 'Fields');
+  if (enabled) {
+    fields.classList.remove('disabled-session');
+  } else {
+    fields.classList.add('disabled-session');
+  }
+}
+
+function validate() {
+  const warnings = [];
+  const hpaEnabled = document.getElementById('hpaEnabled').checked;
+  const hpbEnabled = document.getElementById('hpbEnabled').checked;
+
+  // No sessions enabled
+  if (!hpaEnabled && !hpbEnabled) {
+    warnings.push({ level: 'error', msg: 'No sessions enabled. At least one session (HPA or HPB) must be enabled.' });
+  }
+
+  // Per-session checks
+  const sessions = [];
+  if (hpaEnabled) sessions.push({ prefix: 'hpa', name: 'HPA' });
+  if (hpbEnabled) sessions.push({ prefix: 'hpb', name: 'HPB' });
+
+  for (const s of sessions) {
+    const toBinary = document.getElementById(s.prefix + 'ToBinary').checked;
+    const toHdf5 = document.getElementById(s.prefix + 'ToHdf5').checked;
+    const toText = document.getElementById(s.prefix + 'ToText').checked;
+    const noDecode = document.getElementById(s.prefix + 'NoDecode').checked;
+    const topics = document.getElementById(s.prefix + 'Topics').value.trim();
+
+    // No output format selected
+    if (!toBinary && !toHdf5 && !toText) {
+      warnings.push({ level: 'error', msg: `${s.name}: No output format selected. Enable at least one of Binary, HDF5, or Text.` });
+    }
+
+    // no_decode + HDF5 (valid but produces undecoded HDF5 which is less useful)
+    if (noDecode && toHdf5) {
+      warnings.push({ level: 'warn', msg: `${s.name}: 'No Decode' is enabled with HDF5 output. The HDF5 file will contain raw undecoded messages, which is less useful for analysis. Consider using Binary instead, or disable 'No Decode'.` });
+    }
+
+    // no_decode + text (text output without decoding is raw bytes)
+    if (noDecode && toText) {
+      warnings.push({ level: 'warn', msg: `${s.name}: 'No Decode' is enabled with Text output. Text output will contain raw undecoded data. Consider disabling 'No Decode' for readable text.` });
+    }
+
+    // Empty topics
+    if (!topics) {
+      warnings.push({ level: 'error', msg: `${s.name}: Topics field is empty. This is required — use 'all' to subscribe to everything.` });
+    }
+  }
+
+  // Merged outputs enabled but sessions don't share output formats
+  if (hpaEnabled && hpbEnabled && document.getElementById('globalMerge').value === 'true') {
+    const hpaBin = document.getElementById('hpaToBinary').checked;
+    const hpaHdf = document.getElementById('hpaToHdf5').checked;
+    const hpaTxt = document.getElementById('hpaToText').checked;
+    const hpbBin = document.getElementById('hpbToBinary').checked;
+    const hpbHdf = document.getElementById('hpbToHdf5').checked;
+    const hpbTxt = document.getElementById('hpbToText').checked;
+
+    const sharedBin = hpaBin && hpbBin;
+    const sharedHdf = hpaHdf && hpbHdf;
+    const sharedTxt = hpaTxt && hpbTxt;
+
+    if (!sharedBin && !sharedHdf && !sharedTxt) {
+      warnings.push({ level: 'warn', msg: 'Merged outputs is enabled but HPA and HPB have no common output formats. Nothing will be merged — each session will produce separate files. Either enable the same format on both, or set merged outputs to false.' });
+    }
+  }
+
+  // Same port on same host for both sessions
+  if (hpaEnabled && hpbEnabled) {
+    const hpaHost = document.getElementById('hpaHost').value.trim();
+    const hpaPort = document.getElementById('hpaPort').value.trim();
+    const hpbHost = document.getElementById('hpbHost').value.trim();
+    const hpbPort = document.getElementById('hpbPort').value.trim();
+    if (hpaHost === hpbHost && hpaPort === hpbPort) {
+      warnings.push({ level: 'error', msg: `HPA and HPB have the same host (${hpaHost}) and port (${hpaPort}). They must use different ports — HPA typically uses 30401, HPB uses 41001.` });
+    }
+  }
+
+  // Render warnings
+  const banner = document.getElementById('warningsBanner');
+  if (warnings.length === 0) {
+    banner.classList.remove('visible');
+    banner.textContent = '';
+  } else {
+    banner.classList.add('visible');
+    banner.textContent = '';
+    for (const w of warnings) {
+      const item = document.createElement('div');
+      item.className = 'warning-item level-' + w.level;
+      const icon = document.createElement('span');
+      icon.className = 'warning-icon';
+      icon.textContent = w.level === 'error' ? '\u2718' : '\u26A0';
+      const msg = document.createElement('span');
+      msg.textContent = w.msg;
+      item.appendChild(icon);
+      item.appendChild(msg);
+      banner.appendChild(item);
+    }
+  }
+}
+
+function generate() {
+  validate();
+  const output = document.getElementById('globalOutput').value.trim() || '~/hostlog_client';
+  const merge = document.getElementById('globalMerge').value;
+  const sendTdfs = document.getElementById('globalSendTdfs').value;
+  const splitMb = document.getElementById('globalSplitMb').value;
+
+  let yaml = '---\n';
+  yaml += 'global_options:\n';
+  yaml += `  output: ${yamlQuote(output)}\n`;
+  yaml += `  enable_merged_outputs: ${merge}\n`;
+  yaml += `  send_tdfs: ${sendTdfs}\n`;
+  yaml += '  appconfig:\n';
+  yaml += '    output:\n';
+  yaml += '      files:\n';
+  yaml += `        binary_capture_split_megabytes: ${splitMb}\n`;
+  yaml += '\n';
+  yaml += 'sessions:\n';
+
+  const hpaEnabled = document.getElementById('hpaEnabled').checked;
+  const hpbEnabled = document.getElementById('hpbEnabled').checked;
+
+  if (hpaEnabled) {
+    yaml += buildSession('hpa', 'HPA');
+  }
+  if (hpbEnabled) {
+    yaml += buildSession('hpb', 'HPB');
+  }
+
+  if (!hpaEnabled && !hpbEnabled) {
+    yaml += '  # No sessions configured\n';
+  }
+
+  document.getElementById('output').value = yaml;
+
+  // Update command — quote the output path if it contains spaces
+  const quotedOutput = output.includes(' ') ? `"${output}"` : output;
+  const cmd = `hostlog online start-logging --session-config ./session_config.yaml --output ${quotedOutput}`;
+  document.getElementById('commandBox').textContent = cmd;
+}
+
+function yamlQuote(val) {
+  if (!val) return '""';
+  if (/^(true|false|null|~|yes|no|on|off)$/i.test(val)) {
+    return '"' + val + '"';
+  }
+  if (/[:#{}\[\],&*?|><!%@`"'\s]/.test(val)) {
+    return '"' + val.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+  return val;
+}
+
+function buildSession(prefix, name) {
+  const host = document.getElementById(prefix + 'Host').value.trim() || '127.0.0.1';
+  const port = document.getElementById(prefix + 'Port').value.trim() || '30401';
+  const topics = document.getElementById(prefix + 'Topics').value.trim() || 'all';
+  const toBinary = document.getElementById(prefix + 'ToBinary').checked;
+  const toHdf5 = document.getElementById(prefix + 'ToHdf5').checked;
+  const toText = document.getElementById(prefix + 'ToText').checked;
+  const noDecode = document.getElementById(prefix + 'NoDecode').checked;
+  const defs = document.getElementById(prefix + 'Defs').value.trim();
+  const timeout = document.getElementById(prefix + 'Timeout').value.trim();
+  const stats = document.getElementById(prefix + 'Stats').value;
+  const maxTime = document.getElementById(prefix + 'MaxTime').value.trim();
+
+  let s = `  - ${name}:\n`;
+  s += `      host: ${host}\n`;
+  s += `      port: ${port}\n`;
+
+  if (topics === 'all') {
+    s += '      topics: all\n';
+  } else {
+    s += `      topics: ${yamlQuote(topics)}\n`;
+  }
+
+  if (defs) {
+    s += `      definitions: ${yamlQuote(defs)}\n`;
+  }
+
+  if (noDecode) s += '      no_decode: true\n';
+  if (toBinary) s += '      to_binary: true\n';
+  if (toHdf5) s += '      to_hdf5: true\n';
+  if (toText) s += '      to_text: true\n';
+
+  if (stats && stats !== 'off') {
+    s += `      statistics: ${stats}\n`;
+  }
+
+  if (timeout) {
+    s += `      timeout: ${timeout}\n`;
+  }
+
+  if (maxTime) {
+    s += `      max_time_m: ${maxTime}\n`;
+  }
+
+  return s;
+}
+
+function copyToClipboard() {
+  const textarea = document.getElementById('output');
+  if (!textarea.value) { generate(); }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(textarea.value);
+  } else {
+    textarea.removeAttribute('readonly');
+    textarea.select();
+    document.execCommand('copy');
+    textarea.setAttribute('readonly', '');
+  }
+}
+
+function downloadYaml() {
+  const textarea = document.getElementById('output');
+  if (!textarea.value) { generate(); }
+  const blob = new Blob([textarea.value], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'session_config.yaml';
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+}
+
+function applyPreset(preset) {
+  switch (preset) {
+    case 'hpa_only':
+      document.getElementById('hpaEnabled').checked = true;
+      document.getElementById('hpbEnabled').checked = false;
+      toggleSession('hpa');
+      toggleSession('hpb');
+      document.getElementById('hpaHost').value = '169.254.4.10';
+      document.getElementById('hpaPort').value = '30401';
+      document.getElementById('hpaTopics').value = 'all';
+      document.getElementById('hpaToBinary').checked = true;
+      document.getElementById('hpaToHdf5').checked = false;
+      document.getElementById('hpaToText').checked = false;
+      document.getElementById('hpaNoDecode').checked = true;
+      break;
+    case 'hpb_only':
+      document.getElementById('hpaEnabled').checked = false;
+      document.getElementById('hpbEnabled').checked = true;
+      toggleSession('hpa');
+      toggleSession('hpb');
+      document.getElementById('hpbHost').value = '169.254.4.10';
+      document.getElementById('hpbPort').value = '41001';
+      document.getElementById('hpbTopics').value = 'all';
+      document.getElementById('hpbToBinary').checked = true;
+      document.getElementById('hpbToHdf5').checked = false;
+      document.getElementById('hpbToText').checked = false;
+      document.getElementById('hpbNoDecode').checked = true;
+      break;
+    case 'hpa_hpb':
+      document.getElementById('hpaEnabled').checked = true;
+      document.getElementById('hpbEnabled').checked = true;
+      toggleSession('hpa');
+      toggleSession('hpb');
+      document.getElementById('hpaHost').value = '169.254.4.10';
+      document.getElementById('hpaPort').value = '30401';
+      document.getElementById('hpaTopics').value = 'all';
+      document.getElementById('hpaToHdf5').checked = true;
+      document.getElementById('hpaToBinary').checked = false;
+      document.getElementById('hpaToText').checked = false;
+      document.getElementById('hpaNoDecode').checked = false;
+      document.getElementById('hpbHost').value = '169.254.4.10';
+      document.getElementById('hpbPort').value = '41001';
+      document.getElementById('hpbTopics').value = 'all';
+      document.getElementById('hpbToHdf5').checked = true;
+      document.getElementById('hpbToBinary').checked = false;
+      document.getElementById('hpbToText').checked = false;
+      document.getElementById('hpbNoDecode').checked = false;
+      break;
+    case 'hpa_hpb_binary':
+      document.getElementById('hpaEnabled').checked = true;
+      document.getElementById('hpbEnabled').checked = true;
+      toggleSession('hpa');
+      toggleSession('hpb');
+      document.getElementById('hpaHost').value = '169.254.4.10';
+      document.getElementById('hpaPort').value = '30401';
+      document.getElementById('hpaTopics').value = 'all';
+      document.getElementById('hpaToBinary').checked = true;
+      document.getElementById('hpaToHdf5').checked = false;
+      document.getElementById('hpaToText').checked = false;
+      document.getElementById('hpaNoDecode').checked = true;
+      document.getElementById('hpbHost').value = '169.254.4.10';
+      document.getElementById('hpbPort').value = '41001';
+      document.getElementById('hpbTopics').value = 'all';
+      document.getElementById('hpbToBinary').checked = true;
+      document.getElementById('hpbToHdf5').checked = false;
+      document.getElementById('hpbToText').checked = false;
+      document.getElementById('hpbNoDecode').checked = true;
+      break;
+  }
+  generate();
+}
+
+// Generate on load
+window.addEventListener('DOMContentLoaded', generate);
+</script>
+</body>
+</html>

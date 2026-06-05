@@ -10,56 +10,56 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 from pathlib import Path
 from threading import Thread
-from dataclasses import dataclass
 
 
 DLT_STORAGE_HEADER_PATTERN = b"DLT\x01"
 
+# Pre-compiled regex: extract runs of printable ASCII characters.
+# Replaces byte-by-byte Python loop with the C-level regex engine.
+_PRINTABLE_RUN = re.compile(rb'[\x20-\x7e]+')
 
-@dataclass
-class DltMessage:
-    file_path: str
-    message_index: int
-    timestamp_s: int
-    timestamp_us: int
-    ecu_id: str
-    app_id: str
-    context_id: str
-    payload_text: str
+# Tuple field indices (avoids per-object dataclass overhead for millions of messages)
+_F_PATH = 0
+_F_IDX = 1
+_F_TS_S = 2
+_F_TS_US = 3
+_F_ECU = 4
+_F_APP = 5
+_F_CTX = 6
+_F_TEXT = 7
 
 
 def extract_readable_text(data: bytes) -> str:
-    text_parts = []
-    current = []
-    for byte in data:
-        if 32 <= byte < 127:
-            current.append(chr(byte))
-        elif byte == 0 and current:
-            text_parts.append("".join(current))
-            current = []
-        else:
-            if len(current) >= 3:
-                text_parts.append("".join(current))
-            current = []
-    if len(current) >= 3:
-        text_parts.append("".join(current))
-    return " ".join(text_parts)
+    parts = _PRINTABLE_RUN.findall(data)
+    return b" ".join(parts).decode("ascii") if parts else ""
 
 
-def parse_dlt_file(file_path: str) -> list[DltMessage]:
+def parse_dlt_file(file_path: str) -> tuple[list[tuple], list[str]]:
+    """
+    Parse a single DLT file.
+    Returns (messages, search_texts) where:
+      - messages: list of tuples (path, idx, ts_s, ts_us, ecu, app, ctx, text)
+      - search_texts: pre-computed lowercase search strings (one per message)
+    """
     messages = []
+    search_texts = []
     try:
         with open(file_path, "rb") as f:
             data = f.read()
     except (OSError, IOError):
-        return messages
+        return messages, search_texts
 
     pos = 0
     msg_index = 0
     data_len = len(data)
+    # Local references for hot-loop performance
+    _find = data.find
+    _unpack = struct.unpack_from
+    _marker = DLT_STORAGE_HEADER_PATTERN
+    _extract = extract_readable_text
 
     while pos < data_len - 16:
-        next_marker = data.find(DLT_STORAGE_HEADER_PATTERN, pos)
+        next_marker = _find(_marker, pos)
         if next_marker == -1:
             break
         pos = next_marker
@@ -68,8 +68,8 @@ def parse_dlt_file(file_path: str) -> list[DltMessage]:
             break
 
         try:
-            _, timestamp_s, timestamp_us = struct.unpack_from("<4sII", data, pos)
-            storage_ecu_id = data[pos + 12:pos + 16].split(b"\x00")[0].decode("ascii", errors="replace")
+            _, timestamp_s, timestamp_us = _unpack("<4sII", data, pos)
+            storage_ecu_id = data[pos + 12:pos + 16].split(b"\x00", 1)[0].decode("ascii", errors="replace")
         except struct.error:
             pos += 4
             continue
@@ -80,7 +80,7 @@ def parse_dlt_file(file_path: str) -> list[DltMessage]:
             break
 
         try:
-            htyp, mcnt, length = struct.unpack_from(">BBH", data, pos)
+            htyp, mcnt, length = _unpack(">BBH", data, pos)
         except struct.error:
             pos += 1
             continue
@@ -92,59 +92,54 @@ def parse_dlt_file(file_path: str) -> list[DltMessage]:
         msg_start = pos
         std_hdr_pos = pos + 4
 
-        use_extended_header = bool(htyp & 0x01)
-        with_ecu_id = bool(htyp & 0x04)
-        with_session_id = bool(htyp & 0x08)
-        with_timestamp = bool(htyp & 0x10)
-
         ecu_id = storage_ecu_id
-        if with_ecu_id:
+        if htyp & 0x04:
             if std_hdr_pos + 4 > data_len:
                 pos = msg_start + length
                 continue
-            ecu_id = data[std_hdr_pos:std_hdr_pos + 4].split(b"\x00")[0].decode("ascii", errors="replace")
+            ecu_id = data[std_hdr_pos:std_hdr_pos + 4].split(b"\x00", 1)[0].decode("ascii", errors="replace")
             std_hdr_pos += 4
 
-        if with_session_id:
+        if htyp & 0x08:
             std_hdr_pos += 4
 
-        if with_timestamp:
+        if htyp & 0x10:
             std_hdr_pos += 4
 
         app_id = ""
         context_id = ""
-        if use_extended_header:
+        if htyp & 0x01:
             if std_hdr_pos + 10 > data_len:
                 pos = msg_start + length
                 continue
-            app_id = data[std_hdr_pos + 2:std_hdr_pos + 6].split(b"\x00")[0].decode("ascii", errors="replace")
-            context_id = data[std_hdr_pos + 6:std_hdr_pos + 10].split(b"\x00")[0].decode("ascii", errors="replace")
+            app_id = data[std_hdr_pos + 2:std_hdr_pos + 6].split(b"\x00", 1)[0].decode("ascii", errors="replace")
+            context_id = data[std_hdr_pos + 6:std_hdr_pos + 10].split(b"\x00", 1)[0].decode("ascii", errors="replace")
             std_hdr_pos += 10
 
         payload_start = std_hdr_pos
         payload_end = msg_start + length
         if payload_start < payload_end and payload_end <= data_len:
-            payload_data = data[payload_start:payload_end]
-            payload_text = extract_readable_text(payload_data)
+            payload_text = _extract(data[payload_start:payload_end])
         else:
             payload_text = ""
 
-        if payload_text.strip():
-            messages.append(DltMessage(
-                file_path=file_path,
-                message_index=msg_index,
-                timestamp_s=timestamp_s,
-                timestamp_us=timestamp_us,
-                ecu_id=ecu_id,
-                app_id=app_id,
-                context_id=context_id,
-                payload_text=payload_text,
+        if payload_text:
+            messages.append((
+                file_path,
+                msg_index,
+                timestamp_s,
+                timestamp_us,
+                ecu_id,
+                app_id,
+                context_id,
+                payload_text,
             ))
+            search_texts.append(f"{ecu_id} {app_id} {context_id} {payload_text}".lower())
 
         msg_index += 1
         pos = msg_start + length
 
-    return messages
+    return messages, search_texts
 
 
 class DltSearcherApp:
@@ -154,8 +149,10 @@ class DltSearcherApp:
         self.root.geometry("1200x700")
         self.root.minsize(800, 400)
 
-        self.all_messages: list[DltMessage] = []
+        self.all_messages: list[tuple] = []
+        self._search_texts: list[str] = []
         self.loading = False
+        self._search_generation = 0
         self.root_folder = ""
 
         self._build_ui()
@@ -281,6 +278,7 @@ class DltSearcherApp:
         self.root_folder = folder
         self.load_btn.config(state=tk.DISABLED)
         self.all_messages.clear()
+        self._search_texts.clear()
         self._clear_results()
         self.status_var.set("Scanning for .dlt files...")
 
@@ -296,14 +294,17 @@ class DltSearcherApp:
         self.root.after(0, self.status_var.set, f"Found {total} .dlt file(s). Parsing...")
 
         all_msgs = []
+        all_search = []
         for i, f in enumerate(dlt_files):
-            pct = ((i + 1) / total) * 100
-            msg_count = len(all_msgs)
-            self.root.after(0, self._update_load_progress, i + 1, total, msg_count, f.name, pct)
-            msgs = parse_dlt_file(str(f))
+            msgs, search = parse_dlt_file(str(f))
             all_msgs.extend(msgs)
+            all_search.extend(search)
+            pct = ((i + 1) / total) * 100
+            self.root.after(0, self._update_load_progress,
+                            i + 1, total, len(all_msgs), f.name, pct)
 
         self.all_messages = all_msgs
+        self._search_texts = all_search
         self.root.after(0, self._load_done, total, len(all_msgs))
 
     def _update_load_progress(self, current: int, total: int, msg_count: int, filename: str, pct: float):
@@ -328,71 +329,111 @@ class DltSearcherApp:
             self.status_var.set("Load files first")
             return
 
+        self._search_generation += 1
+        gen = self._search_generation
         self._clear_results()
         self.status_var.set("Searching...")
         self.progress_var.set(0)
-        self.root.update_idletasks()
 
         use_regex = self.regex_var.get()
         case_sensitive = self.case_var.get()
-        flags = 0 if case_sensitive else re.IGNORECASE
-        total_msgs = len(self.all_messages)
-        query_lower = query.lower() if not case_sensitive else query
 
-        results = []
-        for i, msg in enumerate(self.all_messages):
-            # Update progress every 5000 messages
-            if i % 5000 == 0:
-                pct = (i / total_msgs) * 100
-                self.progress_var.set(pct)
-                self.status_var.set(f"Searching... {i:,}/{total_msgs:,} messages checked, {len(results):,} matches")
-                self.root.update_idletasks()
+        Thread(target=self._search_worker,
+               args=(query, use_regex, case_sensitive, gen),
+               daemon=True).start()
 
-            search_text = f"{msg.ecu_id} {msg.app_id} {msg.context_id} {msg.payload_text}"
-            if use_regex:
-                try:
-                    if re.search(query, search_text, flags):
-                        results.append(msg)
-                except re.error:
-                    self.status_var.set("Invalid regex pattern")
-                    self.progress_var.set(0)
-                    return
-            else:
-                if case_sensitive:
-                    if query in search_text:
-                        results.append(msg)
-                else:
-                    if query_lower in search_text.lower():
-                        results.append(msg)
+    def _search_worker(self, query, use_regex, case_sensitive, generation):
+        all_msgs = self.all_messages
+        search_texts = self._search_texts
+        total = len(all_msgs)
+        result_indices = []
 
-        self.progress_var.set(100)
-        self.status_var.set(f"Populating results...")
-        self.root.update_idletasks()
-
-        # Populate tree (cap at 10000 for UI responsiveness)
-        display_count = min(len(results), 10000)
-        for msg in results[:display_count]:
+        if use_regex:
+            flags = 0 if case_sensitive else re.IGNORECASE
             try:
-                rel_path = os.path.relpath(msg.file_path, self.root_folder)
+                pattern = re.compile(query, flags)
+            except re.error:
+                self.root.after(0, self.status_var.set, "Invalid regex pattern")
+                self.root.after(0, self.progress_var.set, 0)
+                return
+            _search = pattern.search
+            if case_sensitive:
+                for i in range(total):
+                    if self._search_generation != generation:
+                        return
+                    if i % 100000 == 0:
+                        self.root.after(0, self._update_search_progress, i, total, len(result_indices))
+                    msg = all_msgs[i]
+                    if _search(f"{msg[_F_ECU]} {msg[_F_APP]} {msg[_F_CTX]} {msg[_F_TEXT]}"):
+                        result_indices.append(i)
+            else:
+                for i in range(total):
+                    if self._search_generation != generation:
+                        return
+                    if i % 100000 == 0:
+                        self.root.after(0, self._update_search_progress, i, total, len(result_indices))
+                    if _search(search_texts[i]):
+                        result_indices.append(i)
+        else:
+            if case_sensitive:
+                for i in range(total):
+                    if self._search_generation != generation:
+                        return
+                    if i % 100000 == 0:
+                        self.root.after(0, self._update_search_progress, i, total, len(result_indices))
+                    msg = all_msgs[i]
+                    if query in f"{msg[_F_ECU]} {msg[_F_APP]} {msg[_F_CTX]} {msg[_F_TEXT]}":
+                        result_indices.append(i)
+            else:
+                query_lower = query.lower()
+                for i in range(total):
+                    if self._search_generation != generation:
+                        return
+                    if i % 100000 == 0:
+                        self.root.after(0, self._update_search_progress, i, total, len(result_indices))
+                    if query_lower in search_texts[i]:
+                        result_indices.append(i)
+
+        if self._search_generation != generation:
+            return
+        self.root.after(0, self._search_done, result_indices, total)
+
+    def _update_search_progress(self, current, total, matches):
+        pct = (current / total) * 100
+        self.progress_var.set(pct)
+        self.status_var.set(f"Searching... {current:,}/{total:,} messages checked, {matches:,} matches")
+
+    def _search_done(self, result_indices, total_msgs):
+        total_results = len(result_indices)
+        display_count = min(total_results, 10000)
+        all_msgs = self.all_messages
+        root_folder = self.root_folder
+
+        for idx in result_indices[:display_count]:
+            msg = all_msgs[idx]
+            try:
+                rel_path = os.path.relpath(msg[_F_PATH], root_folder)
             except ValueError:
-                rel_path = msg.file_path
-            timestamp = f"{msg.timestamp_s}.{msg.timestamp_us:06d}"
+                rel_path = msg[_F_PATH]
             self.tree.insert("", tk.END, values=(
                 rel_path,
-                timestamp,
-                msg.app_id,
-                msg.context_id,
-                msg.payload_text,
+                f"{msg[_F_TS_S]}.{msg[_F_TS_US]:06d}",
+                msg[_F_APP],
+                msg[_F_CTX],
+                msg[_F_TEXT],
             ))
 
-        if len(results) > 10000:
-            self.status_var.set(f"{len(results):,} matches found (showing first 10,000) — searched {total_msgs:,} messages")
+        if total_results > 10000:
+            self.status_var.set(
+                f"{total_results:,} matches found (showing first 10,000) — searched {total_msgs:,} messages")
         else:
-            self.status_var.set(f"{len(results):,} match(es) found — searched {total_msgs:,} messages")
+            self.status_var.set(
+                f"{total_results:,} match(es) found — searched {total_msgs:,} messages")
 
     def _clear_results(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        children = self.tree.get_children()
+        if children:
+            self.tree.delete(*children)
 
     def run(self):
         self.root.mainloop()

@@ -1,0 +1,107 @@
+This is accurate as of 2026-02-11 with hostlog 224
+
+Hostlog can be downloaded from here, as well as DLT and parallel diag which you will need as well.
+
+
+
+
+Once downloaded, extract the Zip file. 7-Zip is recommended for this, it is much faster.
+
+Once extracted go into the folder
+
+Click on the bar at the top, where the file path is, and type cmd then press enter. 
+
+This will open the command prompt at this location.
+
+
+
+
+
+
+
+Open parallel diag and make sure it connects to the vcu
+
+
+
+
+
+
+
+Once connected run this command in the command prompt : 
+
+Make sure the IP address in the below command matches the IP address shown in parallel diag!!
+
+hostlog online start-logging --host 169.254.4.10 --output hostlog --no-decode --to-binary --topics all
+
+
+
+
+NOT TESTED: To make it easier for the consumers of the logs we can decode directly using
+
+hostlog online start-logging --host 169.254.4.10 --output hostlog --to-hdf5 --topics all
+
+
+
+
+NOT TESTED: To log HPB use
+
+hostlog online start-logging --host 169.254.4.10 --port 41001 --output hostlog --to-hdf5 --topics all
+
+
+
+
+There is a way to log HPA and HPB at once but I haven't worked it out yet since I haven't had the need.
+
+
+
+
+Note: Everyone has their own command and the different commands may or may not work with the different versions of hostlog. This is the one that has worked for me with hostlog 224
+
+
+
+
+If you get an error about permission denied when accessing a folder, just delete that folder and try again. You might have to do this step a few times and you might need to do it every time you try run hostlog or maybe only the first time. 
+
+
+
+
+Once started with this command it will keep running until you manually stop it will ctrl+c. 
+
+Hostlog generates a lot of data and large file sizes fairly quickly so dont run it longer than you need to. 
+
+
+
+
+You can find the path to where it saved the logs in the output of the terminal window.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
