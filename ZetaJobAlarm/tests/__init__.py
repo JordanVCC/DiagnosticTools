@@ -1,0 +1,1 @@
+"""Regression tests for Zeta Job Alarm."""

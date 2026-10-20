@@ -1,17 +1,29 @@
+import json
 import os
+from pathlib import Path
 
 def require_env(var_name: str) -> str:
     value = os.getenv(var_name)
-    if not value:
+    if value is None:
+        secrets_path = Path(__file__).with_name("secrets.local.json")
+        if secrets_path.is_file():
+            try:
+                secrets = json.loads(secrets_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                raise RuntimeError("Cannot read secrets.local.json as valid JSON.") from None
+            if not isinstance(secrets, dict):
+                raise RuntimeError("secrets.local.json must contain a JSON object.")
+            value = secrets.get(var_name)
+    if not isinstance(value, str) or not value.strip():
         raise RuntimeError(
-            f"Environment variable {var_name} is missing. "
-            f"Set {var_name} before running the script."
+            f"Credential {var_name} is missing or invalid. "
+            f"Set the environment variable or add it to secrets.local.json."
         )
     return value
 
 # PATs
-CONFLUENCE_PAT = "YOUR_CONFLUENCE_PAT_HERE"
-VIRA_PAT = "YOUR_VIRA_PAT_HERE"
+CONFLUENCE_PAT = require_env("CONFLUENCE_PAT")
+VIRA_PAT = require_env("VIRA_PAT")
 
 # Base URLs
 CONFLUENCE_BASE = "https://confluence.volvocars.biz"

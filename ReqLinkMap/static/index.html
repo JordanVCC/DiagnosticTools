@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReqLink Map</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.31.2/dist/cytoscape.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/layout-base@2.0.1/layout-base.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cose-base@2.2.0/cose-base.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div><strong>ReqLink</strong><span>MAP</span></div>
+    </div>
+    <div id="status" class="status" role="status">Ready</div>
+    <div class="top-actions">
+      <button id="folderButton" class="button secondary" type="button">Map folder PDFs</button>
+      <label class="button primary" for="fileInput">Open PDFs</label>
+      <input id="fileInput" type="file" accept="application/pdf,.pdf" multiple hidden>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <section>
+        <p class="eyebrow">Documents</p>
+        <div id="fileList" class="file-list"><span class="muted">Checking folder...</span></div>
+      </section>
+
+      <section class="metrics" aria-label="Graph statistics">
+        <div><strong id="requirementCount">0</strong><span>Requirements</span></div>
+        <div><strong id="linkCount">0</strong><span>Links</span></div>
+        <div><strong id="externalCount">0</strong><span>External</span></div>
+      </section>
+
+      <section>
+        <label class="eyebrow" for="searchInput">Find requirement</label>
+        <input id="searchInput" class="search" type="search" placeholder="ID, name, or text" disabled>
+      </section>
+
+      <section class="legend">
+        <p class="eyebrow">Reference type</p>
+        <div><i class="key id-key"></i><span>REQ-xxxx</span></div>
+        <div><i class="key name-key"></i><span>Requirement name</span></div>
+        <div><i class="key direct-key"></i><span>Direct link</span></div>
+      </section>
+    </aside>
+
+    <main class="graph-panel">
+      <div id="emptyState" class="empty-state">
+        <div class="empty-graphic" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <h1>Requirement relationships, in context.</h1>
+        <p>Open one or more PDFs to build the map.</p>
+      </div>
+      <div id="graph" aria-label="Interactive requirement graph"></div>
+      <div class="graph-tools">
+        <button id="fitButton" type="button" title="Fit graph to view" disabled>Fit</button>
+        <button id="layoutButton" type="button" title="Re-run graph layout" disabled>Arrange</button>
+        <button id="hideUnmarkedButton" type="button" aria-pressed="false" title="Fade nodes outside marked neighborhoods" disabled>Hide unmarked</button>
+      </div>
+    </main>
+
+    <aside id="detailPanel" class="detail-panel" aria-live="polite">
+      <div class="detail-empty">
+        <span>SELECT A NODE</span>
+        <p>Requirement text and reference origins appear here.</p>
+      </div>
+    </aside>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

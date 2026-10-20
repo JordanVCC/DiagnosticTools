@@ -1,0 +1,5 @@
+github-copilot-sdk>=1.0.22
+pydantic>=2.11
+# Knowledge sync (sync_knowledge.py). pymupdf4llm 2.0 on PyPI is an empty placeholder; keep the pin.
+pymupdf4llm==1.27.2.3
+openpyxl>=3.1

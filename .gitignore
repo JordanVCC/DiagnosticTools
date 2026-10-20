@@ -137,6 +137,17 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+.env.*
+!.env.example
+!.env.*.example
+secrets.local.json
+*.secrets.local.json
+.token_cache.json
+.dtc_token_cache.json
+*.pem
+*.key
+*.p12
+*.pfx
 .venv
 env/
 venv/
@@ -214,3 +225,9 @@ DidDtcGmrdbSyncStatusChecker/did_mapping_report.pdf
 did_mapping_report.md
 NucDataAnalyser/.dtc_result_cache
 NucDltWindowDownloader/_support
+PrettyCameraDSA/DsaLog.txt
+PrettyCameraDSA/DsaLog_filtered.txt
+NucDtcDltFaultCorrelator/runs
+NucDtcDltFaultCorrelator/.occurrence_cache
+NucDtcDltFaultCorrelator/_probe
+*/.parquet_cache

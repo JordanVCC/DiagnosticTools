@@ -1,0 +1,24 @@
+CFM Fault Category,Description
+kBadVideoData,Video input from the cameras is bad.
+kCaptureTimeoutError,Waiting on captured frame timed out.
+kDeserializerElectricalFault,Voltage errors reported from the deserializer.
+kDeserializerFault,Deserializer fault.
+kDeserializerGlobalFault,Global faults reported from the deserializer.
+kDeserializerLinkError,Link error reported from the deserializer.
+kDeserializerPipelineFault,Pipeline fault reported from the deserializer.
+kEepromDataIntegrityCheckFault,"EEPROM data integrity check failed, indicating that the contents are faulty, or that it's an unsupported camera module sample revision."
+kEepromReadFault,Failed to read the EEPROM.
+kFsyncError,Fsync error.
+kInitializationAndStartupFault,Failed to initialize or start camera.
+kInvalidImageMetadata,Issues in the image metadata.
+kLinkLockFault,"Communication with camera module, sensor, serializer, or deserializer failed, indicating a link lock fault."
+kModuleElectricalFault,Voltage errors in any of the camera components.
+kSafetyMechanismCheckFault,Safety mechanism check fault. Failed to verify that safety mechanisms are enabled.
+kSensorFault,Sensor fault.
+kSensorGpioTestFault,Sensor GPIO test fault. Failed to verify that sensor error reporting is enabled.
+kSerializerFault,Serializer fault.
+kSerializerGpioTestFault,Serializer GPIO test fault. Failed to verify that serializer error reporting is enabled.
+kSystemFault,Platform faults that are not reported by degradation manager.
+kTemperatureOutOfRange,Temperature out of range faults.
+kUnknownDriverErrors,Camera driver reported unknown fault.
+kVehicleTimeFault,Faults related to vehicle time.

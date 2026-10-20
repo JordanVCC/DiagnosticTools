@@ -1,0 +1,52 @@
+Fault Reason (FR),FR Description,Needs HPA Restart / SC7 to Recover,Camera Service Status,CFM DTC,CFM Fault Category (FC)
+kDeserializerElectricalFault,Voltage errors reported from the deserializer.,YES,Deactivated,runtime_phase (xxxx96),kDeserializerElectricalFault
+kDeserializerLinkError,Link error reported from the deserializer.,YES,Deactivated,runtime_phase (xxxx96),kDeserializerLinkError
+kDeserializerPipelineFault,Pipeline fault reported from the deserializer.,YES,Deactivated,runtime_phase (xxxx96),kDeserializerPipelineFault
+kEepromIntegrityError,"EEPROM data integrity check failed, indicating that the contents are faulty, or that it's an unsupported camera module sample revision.",YES,Deactivated,init_phase (xxxx93),kEepromDataIntegrityCheckFault
+kReadEeprom,Failed to read the EEPROM.,YES,Deactivated,init_phase (xxxx93),kEepromReadFault
+kDeserializerFsyncError,Fsync error.,YES,Deactivated,runtime_phase (xxxx96),kFsyncError
+kSiplCameraInit,Failed to initialize camera.,YES,Deactivated,init_phase (xxxx93),kInitializationAndStartupFault
+kSiplCameraStart,Failed to start the camera stream,YES,Deactivated,init_phase (xxxx93),kInitializationAndStartupFault
+kDeviceBlockNotifErrorGpioTestSensorFaultInjectionFailure,The call to trigger the pin fails,YES,Deactivated,init_phase (xxxx93),kLinkLockFault
+kDeviceBlockNotifErrorGpioTestSerializerFaultInjectionFailure,The call to trigger the pin fails,YES,Deactivated,init_phase (xxxx93),kLinkLockFault
+kDeviceBlockNotifErrorIntrLocalizationFailure,"Device block event, indicates interrupt localization failure (i.e. could not find source of interrupt)",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kPipelineNotifErrorCdiSetSensorCtrlFailure,"Pipeline event, indicates CDI set sensor control failure.",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kRemoteDeviceTimeoutInterrupt,"Communication with peripherals timed out, indicating a link lock failure.",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kDeviceBlockNotifErrorIntrLocalizationTimeout,"Device block event, indicates interrupt localization timeout.",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kDeviceBlockNotifErrorGetDeserializerErrorInfoFailure,"The attempt to read more information failed, indicating loss of communication with camera, i.e. a link lock failure.",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kDeviceBlockNotifErrorGetModuleErrorInfoFailure,"The attempt to read more information failed, indicating loss of communication with camera, i.e. a link lock failure.",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kDisableLink,"Call to disable link failed, indicating loss of communication with camera, i.e. a link lock failure.",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kEnableLink,"Call to enable link failed, indicating loss of communication with camera, i.e. a link lock failure.",YES,Deactivated,runtime_phase (xxxx96),kLinkLockFault
+kVoltageError,Voltage error in any of the camera components.,YES,Deactivated,runtime_phase (xxxx96),kModuleElectricalFault
+kSensorPowerUpSmErrCheckFailure,Fault is raised both when call to AR0820_CUST1_CustomInterface::GetPowerUpSMErr fails or returns false.,YES,Deactivated,init_phase (xxxx93),kSafetyMechanismCheckFault
+kDeviceBlockNotifErrorSensorFailure,"Device block event, indicates a sensor failure.",YES,Deactivated,runtime_phase (xxxx96),kSensorFault
+kDeviceBlockNotifErrorSensorGpioTestFailure,Triggering the pin does not result in the expected notification,YES,Deactivated,init_phase (xxxx93),kSensorGpioTestFault
+kInitTimeout,I/O timeout when initializing camera service.,YES,Deactivated,init_phase (xxxx93),kSystemFault
+kIcpGetFrame,An error was returned when trying to get next frame from the ICP image queue. Indicates that some system fault has occurred.,YES,Deactivated,runtime_phase (xxxx96),kSystemFault
+kIspGetFrame,An error was returned when trying to get next frame from the ISP image queue. Indicates that some system fault has occurred.,YES,Deactivated,runtime_phase (xxxx96),kSystemFault
+kUnknownError,,YES,Deactivated,runtime_phase (xxxx96),kSystemFault
+kDeserializerUnknownFault (New),Unknown fault reported from the deserializer.,YES,Deactivated,runtime_phase (xxxx96),kUnknownDriverErrors
+kDeviceBlockNotifErrorInternalFailure,"Device block event, indicates an unexpected internal failure.",YES,Deactivated,runtime_phase (xxxx96),kUnknownDriverErrors
+kDeviceBlockNotifErrorUnknown,Received an unrecognized device block event notification.,YES,Deactivated,runtime_phase (xxxx96),kUnknownDriverErrors
+kPipelineNotifErrorInternalFailure,"Pipeline event, indicates an unexpected internal failure.",YES,Deactivated,runtime_phase (xxxx96),kUnknownDriverErrors
+kPipelineNotifErrorUnknown,Received an unrecognized pipeline event notification.,YES,Deactivated,runtime_phase (xxxx96),kUnknownDriverErrors
+kErrbLockContention,Deserializer errb/lock contention,NO,SelfHealing,Not mapped to DTC,
+kPipelineNotifErrorIcpEmbDataParseFailure,"Pipeline event, indicates embedded data parsing failure.",NO,SelfHealing,frame_degradation (xxxx92),kBadVideoData
+kDeviceBlockNotifErrorDeserializerFailure,"Device block event, indicates a deserializer failure.",NO,SelfHealing,runtime_phase (xxxx96),kDeserializerFault
+kDeserializerGlobalError,Global faults reported from the deserializer.,NO,SelfHealing,runtime_phase (xxxx96),kDeserializerGlobalFault
+kCameraFrozenImage,Fault is set when frame sequence number validity check failed.,NO,SelfHealing,frame_degradation (xxxx92),kInvalidImageMetadata
+kEmbeddedDataErrorFlag,Fault is set when embedded data error flag is set.,YES,Exception for Voltage. Otherwise Deactivating,frame_degradation (xxxx92),kInvalidImageMetadata
+kParseImageMetadata,Fault found in image metadata. E.g. optical black/bias voltage check (only relevant for IMX390),NO,SelfHealing,frame_degradation (xxxx92),kInvalidImageMetadata
+kPipelineNotifErrorIcpCaptureFailure,"Pipeline event, indicates ICP capture failure.",NO,SelfHealing,runtime_phase (xxxx96),kSystemFault
+kPipelineNotifErrorIspProcessingFailure,"Pipeline event, indicates ISP processing failure.",NO,SelfHealing,runtime_phase (xxxx96),kSystemFault
+kWatchdog,A worker thread observing faults has not checked in for too long.,NO,SelfHealing,runtime_phase (xxxx96),kSystemFault
+kOverTemperatureFault,Sensor temperature exceeds max allowed temperature.,NO,Cooldown,over_temperature (xxxx98),kTemperatureOutOfRange
+kUnderTemperatureFault,Sensor temperature is lower than the minimum allowed temperature.,NO,SelfHealing,runtime_phase (xxxx96),kTemperatureOutOfRange
+kImageTimestampDeviationExceeded,Vehicle timestamp readout takes too long,NO,SelfHealing,runtime_phase (xxxx96),kVehicleTimeFault
+kImageTimestampIntegrityFalse,Vehicle timestamp integrity is not reliable,NO,SelfHealing,runtime_phase (xxxx96),kVehicleTimeFault
+kDeviceBlockNotifErrorSerializerFailure,"Device block event, indicates a serializer failure.",YES,Deactivated,runtime_phase (xxxx96),kSerializerFault
+kDeviceBlockNotifErrorSerializerGpioTestFailure,Triggering the pin does not result in the expected notification,YES,Deactivated,init_phase (xxxx93),kSerializerGpioTestFault
+kPipelineNotifErrorIcpBadInputStream,"Pipeline event, indicates bad input stream.",NO,SelfHealing,runtime_phase (xxxx96),kBadVideoData
+kPipelineNotifWarningCaptureTimeout,"Pipeline event, indicates occurrence of timeout while capturing.",NO,SelfHealing,frame_degradation (xxxx92),kCaptureTimeoutError
+kPipelineNotifErrorAcpProcessingFailure,"Pipeline event, indicates auto control processing failure.",NO,SelfHealing,runtime_phase (xxxx96),kInvalidImageMetadata
+kModuleInterfaceCreationFailure (Deprecated),,,,init_phase (xxxx93),kInitializationAndStartupFault

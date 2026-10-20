@@ -1,5 +1,7 @@
 import datetime as dt
 import concurrent.futures
+import inspect
+from collections import deque
 import gzip
 import io
 import os
@@ -16,6 +18,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from html.parser import HTMLParser
+from http.cookiejar import Cookie, CookieJar
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -44,10 +47,21 @@ try:
 except ImportError:
     DateEntry = None
 
+try:
+    from azure.identity import DefaultAzureCredential
+    import fsspec
+    import importlib.util
+    HAS_AZURE = importlib.util.find_spec("adlfs") is not None
+    if not HAS_AZURE:
+        raise ImportError("adlfs not installed")
+except ImportError:
+    HAS_AZURE = False
+
 
 BASE_URL = "https://drive.nuc.volvocars.net/data_nuc/"
+HTTP_OPENER = None
 
-# Network and performance tuning.
+# Network and performance tuning (HTTP mode).
 DOWNLOAD_TIMEOUT_BASE_SECONDS = 30
 DOWNLOAD_TIMEOUT_MAX_SECONDS = 300
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
@@ -55,11 +69,193 @@ IO_CHUNK_SIZE = 128 * 1024  # For file operations (extraction, combining)
 PARALLEL_DOWNLOADS = 4
 PARALLEL_SIZE_ESTIMATION = 4
 DOWNLOAD_RESTART_AFTER_TIMEOUT_ATTEMPTS = 6
+
+# Azure Blob Storage settings (used when az login has been run).
+# Direct blob access bypasses the HTTP proxy for significantly higher throughput.
+AZURE_STORAGE_ACCOUNT = "sys34e8eca5"
+AZURE_CONTAINER = "raw-archive-storage"
+AZURE_NUC_ROOT = f"{AZURE_CONTAINER}/data_nuc/public"
+PARALLEL_DOWNLOADS_AZURE = 20          # Per official NUC tooling
+IO_CHUNK_SIZE_AZURE = 8 * 1024 * 1024  # 8 MB, per official NUC tooling
+AZURE_DOWNLOAD_RETRY_ATTEMPTS = 6
+AZURE_DOWNLOAD_RETRY_MAX_SECONDS = 60.0
+
+ARCHIVE_EXTENSIONS = (
+    ".zip", ".zst", ".gz", ".bz2", ".xz",
+    ".tar", ".tgz", ".tar.gz", ".tbz2", ".tar.bz2", ".txz", ".tar.xz",
+    ".rar", ".7z",
+)
+SINGLE_DLT_COMPRESSED_EXTENSIONS = (".zst", ".gz", ".bz2", ".xz")
+
 TIMESTAMP_PATTERN = re.compile(r"(\d{8}T\d{6})")
 
 
 class DownloadCancelledError(Exception):
     pass
+
+
+class NucAuthenticationError(RuntimeError):
+    pass
+
+
+def open_http_response(request, timeout):
+    """Open a NUC request with the in-memory browser session, rejecting sign-in redirects."""
+    response = (
+        HTTP_OPENER.open(request, timeout=timeout)
+        if HTTP_OPENER is not None
+        else urllib.request.urlopen(request, timeout=timeout)
+    )
+    requested_host = urllib.parse.urlsplit(request.full_url).hostname
+    response_host = urllib.parse.urlsplit(response.geturl()).hostname
+    if response_host != requested_host:
+        response.close()
+        raise NucAuthenticationError(
+            f"NUC authentication required while reading {request.full_url}: "
+            f"redirected to {response_host}. Browser sign-in is not shared with this tool. "
+            "Click 'Sign in to NUC Drive' and sign in in the browser that opens."
+        )
+    return response
+
+
+def create_authenticated_http_opener(browser_cookies):
+    """Build an HTTP opener from NUC browser cookies without saving credentials to disk."""
+    cookie_jar = CookieJar()
+    host = urllib.parse.urlsplit(BASE_URL).hostname
+    for browser_cookie in browser_cookies:
+        domain = browser_cookie["domain"]
+        cookie_host = domain.lstrip(".")
+        if host != cookie_host and not host.endswith("." + cookie_host):
+            continue
+        expires = browser_cookie.get("expires", -1)
+        cookie_jar.set_cookie(Cookie(
+            version=0, name=browser_cookie["name"], value=browser_cookie["value"],
+            port=None, port_specified=False, domain=domain,
+            domain_specified=domain.startswith("."), domain_initial_dot=domain.startswith("."),
+            path=browser_cookie.get("path", "/"), path_specified=True,
+            secure=browser_cookie.get("secure", False),
+            expires=int(expires) if expires > 0 else None, discard=expires <= 0,
+            comment=None, comment_url=None, rest={}, rfc2109=False,
+        ))
+    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
+
+
+def authenticate_nuc_drive():
+    """Open bundled Chromium for NUC sign-in and return a verified in-memory HTTP opener."""
+    try:
+        from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError, sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Install sign-in support with: pip install playwright") from exc
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=False)
+        try:
+            context = browser.new_context()
+            page = context.new_page()
+            page.goto(BASE_URL)
+            page.wait_for_url(BASE_URL + "**", timeout=180000)
+            opener = create_authenticated_http_opener(context.cookies([BASE_URL]))
+            request = urllib.request.Request(BASE_URL, headers={"User-Agent": "Mozilla/5.0"})
+            with opener.open(request, timeout=30) as response:
+                if urllib.parse.urlsplit(response.geturl()).hostname != urllib.parse.urlsplit(BASE_URL).hostname:
+                    raise NucAuthenticationError("NUC sign-in did not establish a usable session. Please try again.")
+            return opener
+        except PlaywrightTimeoutError as exc:
+            raise NucAuthenticationError(
+                "NUC Drive sign-in timed out. Retry and complete sign-in within three minutes. "
+                "Leave the sign-in browser open until the tool closes it automatically."
+            ) from exc
+        except PlaywrightError as exc:
+            if "closed" in str(exc).lower():
+                raise NucAuthenticationError(
+                    "The sign-in browser closed before NUC Drive sign-in was verified. "
+                    "Retry and leave that window open until the tool closes it automatically. "
+                    "Signing in in another browser does not sign in this tool."
+                ) from exc
+            raise
+        finally:
+            browser.close()
+
+
+def create_azure_fs():
+    """
+    Create an Azure Data Lake filesystem using DefaultAzureCredential.
+    Requires 'az login' to have been completed before calling.
+    adlfs is imported lazily here to avoid its atexit cleanup handler
+    running on every startup even when Azure is not used.
+    """
+    if not HAS_AZURE:
+        raise RuntimeError(
+            "Azure packages not installed. Run: pip install azure-identity adlfs"
+        )
+    import adlfs  # noqa: F401 — lazy import registers abfs:// with fsspec
+    credential = DefaultAzureCredential()
+
+    # adlfs cleanup awaits credential.close(); make sync close methods awaitable.
+    close_method = getattr(credential, "close", None)
+    if callable(close_method) and not inspect.iscoroutinefunction(close_method):
+        def _sync_close_wrapper():
+            return close_method()
+
+        async def _async_close_wrapper():
+            maybe_awaitable = _sync_close_wrapper()
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
+
+        credential.close = _async_close_wrapper
+
+    return fsspec.filesystem("abfs", account_name=AZURE_STORAGE_ACCOUNT, credential=credential)
+
+
+def azure_list_names(fs, path: str) -> list[str]:
+    """List immediate child names in an Azure path. Returns [] if path doesn't exist."""
+    try:
+        entries = fs.ls(path, detail=False)
+        names = [e.rstrip("/").rsplit("/", 1)[-1] for e in entries]
+        return [n for n in names if n]
+    except FileNotFoundError:
+        return []
+    except Exception as exc:
+        raise RuntimeError(f"Azure list failed for '{path}': {exc}") from exc
+
+
+def azure_list_files(fs, path: str) -> list[tuple[str, int | None]]:
+    """
+    List files (not subdirectories) with their sizes in an Azure path.
+    Returns list of (filename, size_bytes). Returns [] if path doesn't exist.
+    """
+    try:
+        entries = fs.ls(path, detail=True)
+        return [
+            (e["name"].rstrip("/").rsplit("/", 1)[-1], e.get("size"))
+            for e in entries
+            if e.get("type", "").lower() not in ("directory", "dir")
+        ]
+    except FileNotFoundError:
+        return []
+    except Exception as exc:
+        raise RuntimeError(f"Azure file list failed for '{path}': {exc}") from exc
+
+
+def azure_find_child_name(fs, parent_path: str, target_name: str) -> str | None:
+    """Resolve a child directory/file name under parent_path using case-insensitive matching."""
+    if not target_name or not target_name.strip():
+        return None
+    target = target_name.strip().casefold()
+    for name in azure_list_names(fs, parent_path):
+        if name.casefold() == target:
+            return name
+    return None
+
+
+def azure_find_dlt_dir_name(fs, vin_root_path: str) -> str | None:
+    """Resolve the DLT directory name under a VIN path (exact match first, then contains)."""
+    names = azure_list_names(fs, vin_root_path)
+    exact = [name for name in names if name.casefold() == "dlt"]
+    if exact:
+        return exact[0]
+    contains = [name for name in names if "dlt" in name.casefold()]
+    if contains:
+        return contains[0]
+    return None
 
 
 def format_bytes(num_bytes: int) -> str:
@@ -103,7 +299,7 @@ def fetch_links(url: str) -> list[tuple[str, str, bool]]:
         raise ValueError(f"Invalid URL: {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with open_http_response(req, timeout=30) as response:
             html = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         raise RuntimeError(f"HTTP error {exc.code} while reading {url}: {exc.reason}") from exc
@@ -184,6 +380,22 @@ def parse_filename_timestamp(file_name: str) -> dt.datetime | None:
         return None
 
 
+def is_archive_candidate_name(file_name: str) -> bool:
+    """Check if a filename likely represents an archive/compressed payload."""
+    if not file_name:
+        return False
+    low = file_name.lower()
+    return any(low.endswith(ext) for ext in ARCHIVE_EXTENSIONS)
+
+
+def is_supported_dlt_payload_name(file_name: str) -> bool:
+    """Check if filename is either a raw .dlt or an archive that may contain DLT files."""
+    if not file_name:
+        return False
+    low = file_name.lower()
+    return low.endswith(".dlt") or is_archive_candidate_name(low)
+
+
 def daterange(start_date: dt.date, end_date: dt.date):
     """Iterate through dates from start_date to end_date (inclusive)."""
     if not isinstance(start_date, dt.date) or not isinstance(end_date, dt.date):
@@ -219,6 +431,10 @@ def is_transient_network_error(exc: Exception) -> bool:
         return exc.code in {408, 429, 500, 502, 503, 504}
 
     text = str(exc).lower()
+    # Azure/aiohttp timeouts are often wrapped in generic Exceptions with timeout wording.
+    if "timeout" in text or "timed out" in text:
+        return True
+
     transient_markers = (
         "connection reset",
         "connection aborted",
@@ -228,6 +444,9 @@ def is_transient_network_error(exc: Exception) -> bool:
         "temporary failure",
         "network is unreachable",
         "name or service not known",
+        "timeout on reading data from socket",
+        "server timeout",
+        "read timeout",
     )
     return any(marker in text for marker in transient_markers)
 
@@ -295,12 +514,25 @@ def is_archive_file(file_path: Path) -> bool:
     return get_compression_format(file_path) is not None
 
 
+def is_valid_dlt_file(path: Path) -> bool:
+    """Check that path is a real, non-empty regular file (rejects stray directories/empty placeholders)."""
+    return path.is_file() and path.stat().st_size > 0
+
+
+def remove_stray_path(path: Path) -> None:
+    """Remove a directory or file left at a location where a DLT file was expected."""
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
+
+
 def get_single_file_dlt_counterpart_path(file_name: str, output_dir: Path) -> Path | None:
     """Get expected .dlt path for single-file compressed DLT payloads (e.g., file.dlt.zst -> file.dlt)."""
     if not file_name or not isinstance(file_name, str):
         return None
     low = file_name.lower()
-    for ext in (".zst", ".gz", ".bz2", ".xz"):
+    for ext in SINGLE_DLT_COMPRESSED_EXTENSIONS:
         marker = ".dlt" + ext
         if low.endswith(marker):
             return output_dir / file_name[: -len(ext)]
@@ -314,11 +546,13 @@ def get_remote_file_size(url: str, retries: int = 2) -> int | None:
     for attempt in range(1, retries + 1):
         req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
         try:
-            with urllib.request.urlopen(req, timeout=45) as response:
+            with open_http_response(req, timeout=45) as response:
                 header_value = response.headers.get("Content-Length")
                 if not header_value:
                     return None
                 return int(header_value)
+        except NucAuthenticationError:
+            raise
         except Exception as exc:
             if attempt >= retries:
                 return None
@@ -390,7 +624,7 @@ def download_file(
         req = urllib.request.Request(url, headers=headers)
 
         try:
-            with urllib.request.urlopen(req, timeout=request_timeout) as response:
+            with open_http_response(req, timeout=request_timeout) as response:
                 status_code = response.getcode()
 
                 # If server ignores Range and returns full content, restart from zero.
@@ -526,6 +760,8 @@ def _extract_zip(zip_path: Path, output_dir: Path, skip_existing: bool) -> tuple
                 continue
             
             target_path = output_dir / target_name
+            if target_path.exists() and not is_valid_dlt_file(target_path):
+                remove_stray_path(target_path)
             if skip_existing and target_path.exists():
                 skipped_count += 1
                 extracted_paths.append(target_path)
@@ -566,6 +802,8 @@ def _extract_compressed_single(archive_path: Path, output_dir: Path, skip_existi
             output_name += ".dlt"
         
         output_path = output_dir / output_name
+        if output_path.exists() and not is_valid_dlt_file(output_path):
+            remove_stray_path(output_path)
         if skip_existing and output_path.exists():
             return 0, 1, 1, [output_path]
         if not skip_existing and output_path.exists():
@@ -622,6 +860,8 @@ def _extract_tar(tar_path: Path, output_dir: Path, skip_existing: bool) -> tuple
                     continue
                 
                 target_path = output_dir / target_name
+                if target_path.exists() and not is_valid_dlt_file(target_path):
+                    remove_stray_path(target_path)
                 if skip_existing and target_path.exists():
                     skipped_count += 1
                     extracted_paths.append(target_path)
@@ -672,6 +912,8 @@ def _extract_tar_from_stream(archive_path: Path, output_dir: Path, skip_existing
                     continue
                 
                 target_path = output_dir / target_name
+                if target_path.exists() and not is_valid_dlt_file(target_path):
+                    remove_stray_path(target_path)
                 if skip_existing and target_path.exists():
                     skipped_count += 1
                     extracted_paths.append(target_path)
@@ -997,6 +1239,7 @@ class DownloaderApp(tk.Tk):
         self.all_vins = []
         self.cancel_event = threading.Event()
         self.speed_state_lock = threading.Lock()
+        self.azure_fs = None  # Set by _load_vins_worker if Azure auth succeeds
         self._drain_queue_after_id = None
 
         self._build_ui()
@@ -1094,6 +1337,8 @@ class DownloaderApp(tk.Tk):
         ttk.Label(top, textvariable=self.vin_status_var).grid(row=0, column=2, padx=8, pady=8, sticky="w")
         self.refresh_vins_button = ttk.Button(top, text="Refresh VINs", command=self._start_vin_refresh)
         self.refresh_vins_button.grid(row=0, column=3, padx=8, pady=8)
+        self.sign_in_button = ttk.Button(top, text="Sign in to NUC Drive", command=self._start_http_sign_in)
+        self.sign_in_button.grid(row=0, column=4, padx=8, pady=8)
 
         ttk.Label(top, text="Variant").grid(row=1, column=0, padx=8, pady=8, sticky="w")
         self.variant_var = tk.StringVar(value="HPA")
@@ -1193,6 +1438,32 @@ class DownloaderApp(tk.Tk):
 
         self.vin_combo["values"] = filtered[:300]
 
+    def _start_http_sign_in(self):
+        if (self.worker_thread and self.worker_thread.is_alive()) or (
+            self.vin_loader_thread and self.vin_loader_thread.is_alive()
+        ):
+            messagebox.showinfo("Please wait", "Wait for the current operation to finish before signing in.")
+            return
+        self.sign_in_button.configure(state="disabled")
+        self.refresh_vins_button.configure(state="disabled")
+        self.log("Sign in to NUC Drive in the Chromium window that opens (3-minute timeout). Leave it open until it closes automatically.")
+        self.vin_loader_thread = threading.Thread(target=self._http_sign_in_worker, daemon=True)
+        self.vin_loader_thread.start()
+
+    def _http_sign_in_worker(self):
+        global HTTP_OPENER
+        try:
+            HTTP_OPENER = authenticate_nuc_drive()
+            self.azure_fs = None
+            self.log("NUC Drive signed in. Using drive listings for current and archived logs.")
+            self._load_vins_worker()
+        except Exception as exc:
+            self.log(f"NUC Drive sign-in failed: {exc}")
+            self.ui_queue.put(("vin_error", str(exc)))
+            self.ui_queue.put(("dialog", "error", "NUC Drive sign-in failed", str(exc)))
+        finally:
+            self.ui_queue.put(("sign_in_ready",))
+
     def _start_vin_refresh(self):
         if self.vin_loader_thread and self.vin_loader_thread.is_alive():
             return
@@ -1206,10 +1477,31 @@ class DownloaderApp(tk.Tk):
 
     def _load_vins_worker(self):
         """Load VIN list from NUC drive (runs in background thread)."""
+        # Try Azure first — direct blob storage is faster and eliminates HTTP timeouts.
+        if HAS_AZURE and HTTP_OPENER is None:
+            try:
+                fs = create_azure_fs()
+                vins = sorted(azure_list_names(fs, AZURE_NUC_ROOT))
+                if vins:
+                    self.azure_fs = fs
+                    self.ui_queue.put(("vin_loaded", vins))
+                    self.log(
+                        f"Azure Blob Storage connected ({AZURE_STORAGE_ACCOUNT}) — "
+                        f"{PARALLEL_DOWNLOADS_AZURE} parallel workers, {IO_CHUNK_SIZE_AZURE // (1024*1024)} MB buffer."
+                    )
+                    return
+            except Exception as azure_exc:
+                self.log(f"Azure connection failed (run 'az login' to enable fast mode): {azure_exc}")
+
+        # HTTP fallback
         try:
             links = fetch_links(BASE_URL)
             vins = sorted([name for name, _url, is_dir in links if is_dir])
             self.ui_queue.put(("vin_loaded", vins))
+            self.log(
+                f"HTTP mode ({PARALLEL_DOWNLOADS} parallel workers). "
+                "Run 'az login' then refresh to enable fast Azure mode."
+            )
         except Exception as exc:
             self.ui_queue.put(("vin_error", str(exc)))
 
@@ -1304,6 +1596,8 @@ class DownloaderApp(tk.Tk):
             self._set_loaded_vins(action[1])
         elif name == "vin_error":
             self._set_vin_load_error(action[1])
+        elif name == "sign_in_ready":
+            self.sign_in_button.configure(state="normal")
         elif name == "set_running":
             self.set_running(action[1])
         elif name == "progress_mode":
@@ -1424,6 +1718,7 @@ class DownloaderApp(tk.Tk):
         Main download worker thread (runs in background).
         Orchestrates file discovery, parallel downloads, extraction, and combining.
         """
+        global HTTP_OPENER
         downloaded = 0
         skipped_existing = 0
         extracted_dlt = 0
@@ -1434,112 +1729,164 @@ class DownloaderApp(tk.Tk):
             total_days = (end_dt.date() - start_dt.date()).days + 1
             self._raise_if_cancelled()
 
-            self.log(f"Looking up VIN '{vin}' in {BASE_URL}")
-            vin_url = find_child_dir(BASE_URL, vin)
-            if not vin_url:
-                raise RuntimeError(f"VIN '{vin}' was not found in the directory listing.")
+            # Snapshot Azure FS state; determines worker count and download path for this run.
+            azure_fs = self.azure_fs if HTTP_OPENER is None else None
+            parallel_workers = PARALLEL_DOWNLOADS_AZURE if azure_fs is not None else PARALLEL_DOWNLOADS
 
-            self.log(f"VIN directory: {vin_url}")
-            dlt_url = find_dlt_dir(vin_url)
-            if not dlt_url:
-                raise RuntimeError("Could not find a DLT folder for the selected VIN.")
+            expected_total_bytes = 0
+            unknown_size_count = 0
+            sized_matches: list = []
 
-            self.log(f"DLT directory: {dlt_url}")
-            variant_url = find_child_dir(dlt_url, variant)
-            if not variant_url:
-                raise RuntimeError(f"Could not find variant folder '{variant}' under DLT.")
+            if azure_fs is not None:
+                # === AZURE PATH: direct blob storage — no HTML scraping, sizes come free from ls() ===
+                azure_vin = azure_find_child_name(azure_fs, AZURE_NUC_ROOT, vin)
+                if not azure_vin:
+                    raise RuntimeError(
+                        f"VIN '{vin}' was not found in Azure container '{AZURE_STORAGE_ACCOUNT}'."
+                    )
 
-            self.log(f"Variant directory: {variant_url}")
-            self.log("Scanning dates and collecting matching files...")
-            self.ui_queue.put(("progress_mode", "determinate", max(1, total_days), 0))
+                vin_root_path = f"{AZURE_NUC_ROOT}/{azure_vin}"
+                azure_dlt_dir = azure_find_dlt_dir_name(azure_fs, vin_root_path)
+                if not azure_dlt_dir:
+                    raise RuntimeError("Could not find a DLT folder for the selected VIN in Azure.")
 
-            matches = []
-            for day_index, day in enumerate(daterange(start_dt.date(), end_dt.date()), start=1):
-                self._raise_if_cancelled()
-                self.ui_queue.put(("progress_value", day_index, f"Scanning {day_index}/{total_days} day(s)..."))
-                year_url = find_child_dir_numeric(variant_url, day.year)
-                if not year_url:
-                    continue
+                variant_root = f"{vin_root_path}/{azure_dlt_dir}"
+                azure_variant = azure_find_child_name(azure_fs, variant_root, variant)
+                if not azure_variant:
+                    raise RuntimeError(
+                        f"Could not find variant folder '{variant}' under Azure DLT path for VIN '{vin}'."
+                    )
 
-                month_url = find_child_dir_numeric(year_url, day.month)
-                if not month_url:
-                    continue
+                variant_azure_path = f"{variant_root}/{azure_variant}"
+                self.log(f"Azure mode | {AZURE_STORAGE_ACCOUNT}/{variant_azure_path}")
+                self.log("Scanning dates and collecting matching files...")
+                self.ui_queue.put(("progress_mode", "determinate", max(1, total_days), 0))
 
-                day_url = find_child_dir_numeric(month_url, day.day)
-                if not day_url:
-                    continue
+                for day_index, day in enumerate(daterange(start_dt.date(), end_dt.date()), start=1):
+                    self._raise_if_cancelled()
+                    self.ui_queue.put(("progress_value", day_index, f"Scanning {day_index}/{total_days} day(s)..."))
+                    day_path = f"{variant_azure_path}/{day.year:04d}/{day.month:02d}/{day.day:02d}"
+                    for file_name, file_size in azure_list_files(azure_fs, day_path):
+                        if not is_supported_dlt_payload_name(file_name):
+                            continue
+                        file_ts = parse_filename_timestamp(file_name)
+                        if file_ts is None:
+                            continue
+                        if start_dt <= file_ts <= end_dt:
+                            sized_matches.append((file_name, f"{day_path}/{file_name}", day, file_size))
+                            if file_size is not None:
+                                expected_total_bytes += file_size
+                            else:
+                                unknown_size_count += 1
 
-                try:
-                    day_links = fetch_links(day_url)
-                except Exception as day_exc:
-                    self.log(f"Skipping day {day.isoformat()} due to error: {day_exc}")
-                    continue
+            else:
+                # === HTTP PATH: web directory listing + parallel HEAD requests for sizes ===
+                self.log(f"HTTP mode | Looking up VIN '{vin}' in {BASE_URL}")
+                vin_url = find_child_dir(BASE_URL, vin)
+                if not vin_url:
+                    raise RuntimeError(f"VIN '{vin}' was not found in the directory listing.")
 
-                for file_name, file_url, is_dir in day_links:
-                    if is_dir:
+                self.log(f"VIN directory: {vin_url}")
+                dlt_url = find_dlt_dir(vin_url)
+                if not dlt_url:
+                    raise RuntimeError("Could not find a DLT folder for the selected VIN.")
+
+                self.log(f"DLT directory: {dlt_url}")
+                variant_url = find_child_dir(dlt_url, variant)
+                if not variant_url:
+                    raise RuntimeError(f"Could not find variant folder '{variant}' under DLT.")
+
+                self.log(f"Variant directory: {variant_url}")
+                self.log("Scanning dates and collecting matching files...")
+                self.ui_queue.put(("progress_mode", "determinate", max(1, total_days), 0))
+
+                http_matches: list = []
+                for day_index, day in enumerate(daterange(start_dt.date(), end_dt.date()), start=1):
+                    self._raise_if_cancelled()
+                    self.ui_queue.put(("progress_value", day_index, f"Scanning {day_index}/{total_days} day(s)..."))
+                    year_url = find_child_dir_numeric(variant_url, day.year)
+                    if not year_url:
                         continue
-                    low = file_name.lower()
-                    # Accept raw DLT files and any archive format that may contain DLT files
-                    # Common formats: .zip, .zst, .gz, .bz2, .xz, .tar, .tar.gz, .tar.bz2, .tar.xz
-                    is_dlt_file = low.endswith(".dlt")
-                    is_archive_format = any(low.endswith(ext) for ext in [
-                        ".zip", ".zst", ".gz", ".bz2", ".xz", 
-                        ".tar", ".tgz", ".tar.gz", ".tbz2", ".tar.bz2", ".txz", ".tar.xz",
-                        ".rar", ".7z"
-                    ])
-                    
-                    if not (is_dlt_file or is_archive_format):
+                    month_url = find_child_dir_numeric(year_url, day.month)
+                    if not month_url:
                         continue
-
-                    file_ts = parse_filename_timestamp(file_name)
-                    if file_ts is None:
+                    day_url = find_child_dir_numeric(month_url, day.day)
+                    if not day_url:
                         continue
-                    if start_dt <= file_ts <= end_dt:
-                        matches.append((file_name, file_url, day))
+                    try:
+                        day_links = fetch_links(day_url)
+                    except NucAuthenticationError:
+                        raise
+                    except Exception as day_exc:
+                        self.log(f"Skipping day {day.isoformat()} due to error: {day_exc}")
+                        continue
+                    for file_name, file_url, is_dir in day_links:
+                        if is_dir:
+                            continue
+                        if not is_supported_dlt_payload_name(file_name):
+                            continue
+                        file_ts = parse_filename_timestamp(file_name)
+                        if file_ts is None:
+                            continue
+                        if start_dt <= file_ts <= end_dt:
+                            http_matches.append((file_name, file_url, day))
 
-            if not matches:
+                if http_matches:
+                    self.log(f"Found {len(http_matches)} matching file(s). Estimating sizes...")
+                    self.ui_queue.put(("progress_mode", "determinate", len(http_matches), 0))
+                    sorted_http = sorted(http_matches, key=lambda x: x[0])
+
+                    def estimate_single_file(args):
+                        file_name, file_url, day, idx = args
+                        self._raise_if_cancelled()
+                        remote_size = get_remote_file_size(file_url)
+                        return (file_name, file_url, day, remote_size, idx)
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=PARALLEL_SIZE_ESTIMATION) as executor:
+                        futures = [
+                            executor.submit(estimate_single_file, (fn, fu, d, i))
+                            for i, (fn, fu, d) in enumerate(sorted_http, start=1)
+                        ]
+                        for future in concurrent.futures.as_completed(futures):
+                            self._raise_if_cancelled()
+                            fn, fu, d, remote_size, i = future.result()
+                            self.ui_queue.put(("progress_value", i, f"Estimating size {i}/{len(http_matches)}..."))
+                            if remote_size is None:
+                                unknown_size_count += 1
+                            else:
+                                expected_total_bytes += remote_size
+                            sized_matches.append((fn, fu, d, remote_size))
+
+            sized_matches.sort(key=lambda x: x[0])
+            total_files = len(sized_matches)
+
+            if not sized_matches:
+                if azure_fs is not None:
+                    self.log(
+                        "No matches in Azure archive storage. Checking NUC Drive instead. "
+                        "Complete sign-in in the Chromium window that opens (3-minute timeout). "
+                        "Leave it open until it closes automatically."
+                    )
+                    self.ui_queue.put(("progress_value", 0, "Waiting for NUC Drive sign-in in Chromium..."))
+                    HTTP_OPENER = authenticate_nuc_drive()
+                    self.azure_fs = None
+                    self._raise_if_cancelled()
+                    self.log("NUC Drive sign-in verified. Retrying this download using Drive listings.")
+                    return self._run_download(
+                        vin, variant, start_dt, end_dt, output_dir, skip_existing, combine_dlt,
+                    )
                 self.log("No matching DLT files found for the selected time window.")
                 self.ui_queue.put(("dialog", "info", "Completed", "No matching DLT files found for the selected time window."))
                 return
 
-            self.log(f"Found {len(matches)} matching file(s). Starting download...")
-            self.log("Estimating total data size...")
-            self.ui_queue.put(("progress_mode", "determinate", len(matches), 0))
-
-            expected_total_bytes = 0
-            unknown_size_count = 0
-            sized_matches = []
-            
-            sorted_matches = sorted(matches, key=lambda x: x[0])
-            
-            def estimate_single_file(args):
-                file_name, file_url, day, idx = args
-                self._raise_if_cancelled()
-                remote_size = get_remote_file_size(file_url)
-                return (file_name, file_url, day, remote_size, idx)
-            
-            with concurrent.futures.ThreadPoolExecutor(max_workers=PARALLEL_SIZE_ESTIMATION) as executor:
-                futures = [
-                    executor.submit(estimate_single_file, (file_name, file_url, day, idx))
-                    for idx, (file_name, file_url, day) in enumerate(sorted_matches, start=1)
-                ]
-                for future in concurrent.futures.as_completed(futures):
-                    self._raise_if_cancelled()
-                    file_name, file_url, day, remote_size, idx = future.result()
-                    self.ui_queue.put(("progress_value", idx, f"Estimating size {idx}/{len(matches)}..."))
-                    if remote_size is None:
-                        unknown_size_count += 1
-                    else:
-                        expected_total_bytes += remote_size
-                    sized_matches.append((file_name, file_url, day, remote_size))
-            
-            sized_matches.sort(key=lambda x: x[0])
+            mode_tag = f"Azure/{PARALLEL_DOWNLOADS_AZURE} workers" if azure_fs is not None else f"HTTP/{PARALLEL_DOWNLOADS} workers"
+            self.log(f"Found {total_files} matching file(s) [{mode_tag}].")
 
             if unknown_size_count == 0:
-                self.log(f"Estimated total download size: {format_bytes(expected_total_bytes)}")
+                self.log(f"Total download size: {format_bytes(expected_total_bytes)}")
             else:
                 self.log(
-                    "Estimated total download size: "
+                    f"Total download size: "
                     f"{format_bytes(expected_total_bytes)} + {unknown_size_count} file(s) with unknown size"
                 )
 
@@ -1566,10 +1913,10 @@ class DownloaderApp(tk.Tk):
                     total_known_bytes_to_download += remote_size
 
             if unknown_transfer_count == 0:
-                self.log(f"Estimated remaining download size: {format_bytes(total_known_bytes_to_download)}")
+                self.log(f"Remaining download size: {format_bytes(total_known_bytes_to_download)}")
             else:
                 self.log(
-                    "Estimated remaining download size: "
+                    "Remaining download size: "
                     f"{format_bytes(total_known_bytes_to_download)} + {unknown_transfer_count} file(s) with unknown size"
                 )
 
@@ -1578,36 +1925,28 @@ class DownloaderApp(tk.Tk):
             else:
                 self.ui_queue.put(("progress_mode", "indeterminate", 100, 0))
 
-            downloaded_bytes = 0
             download_started_at = time.monotonic()
             speed_monitor_stop = threading.Event()
             speed_state = {
-                "idx": 0,
                 "total": len(sized_matches),
-                "file_downloaded": 0,
-                "file_target": None,
+                "active_workers": 0,
+                "completed_files": 0,
                 "downloaded_bytes": 0,  # Thread-safe via lock
             }
-            smoothed_speed_state = {
-                "fast_bps": 0.0,
-                "stable_bps": 0.0,
-                "last_sample_time": download_started_at,
-                "last_downloaded_bytes": 0,
+            speed_metrics = {
+                "ema_bps": 0.0,
+                "samples": deque([(download_started_at, 0)]),  # rolling (time, total_bytes)
+                "last_emit_ts": 0.0,
+                "eta_seconds": None,  # Model ETA from throughput
+                "eta_display_seconds": None,  # UI ETA that should tick down smoothly
             }
-            eta_state = {"seconds": None}
 
             def emit_speed_update():
                 with self.speed_state_lock:
-                    idx_state = speed_state["idx"]
                     total_state = speed_state["total"]
-                    file_downloaded_state = speed_state["file_downloaded"]
-                    file_target_state = speed_state["file_target"]
+                    active_workers_state = speed_state["active_workers"]
+                    completed_state = speed_state["completed_files"]
                     downloaded_state = speed_state["downloaded_bytes"]  # Protected by lock
-
-                if file_target_state is not None:
-                    file_status = f"{format_bytes(file_downloaded_state)} / {format_bytes(file_target_state)}"
-                else:
-                    file_status = f"{format_bytes(file_downloaded_state)}"
 
                 if unknown_transfer_count == 0 and total_known_bytes_to_download > 0:
                     total_status = f"{format_bytes(downloaded_state)} / {format_bytes(total_known_bytes_to_download)}"
@@ -1619,71 +1958,105 @@ class DownloaderApp(tk.Tk):
                 now_ts = time.monotonic()
                 elapsed = max(now_ts - download_started_at, 1e-6)
 
-                # Use interval speed (delta bytes / delta time) instead of full-run average.
-                sample_dt = max(now_ts - smoothed_speed_state["last_sample_time"], 1e-6)
-                sample_db = max(0, downloaded_state - smoothed_speed_state["last_downloaded_bytes"])
-                instantaneous_bps = sample_db / sample_dt
+                # Emit roughly once per second so ETA naturally ticks down 1s at a time.
+                prev_emit_ts = speed_metrics["last_emit_ts"]
+                if now_ts - prev_emit_ts < 0.95:
+                    return
+                speed_metrics["last_emit_ts"] = now_ts
+                emit_dt = (now_ts - prev_emit_ts) if prev_emit_ts > 0.0 else 1.0
 
-                smoothed_speed_state["last_sample_time"] = now_ts
-                smoothed_speed_state["last_downloaded_bytes"] = downloaded_state
+                samples: deque = speed_metrics["samples"]
+                samples.append((now_ts, downloaded_state))
+                window_seconds = 60.0
+                while len(samples) > 2 and (now_ts - samples[0][0]) > window_seconds:
+                    samples.popleft()
 
-                # Keep a fast speed for responsive UI and a very stable speed for estimates.
-                fast_alpha = 0.35
-                stable_alpha = 0.03
-                prev_fast_bps = smoothed_speed_state["fast_bps"]
-                prev_stable_bps = smoothed_speed_state["stable_bps"]
-                if prev_fast_bps <= 0.0:
-                    smoothed_speed_state["fast_bps"] = instantaneous_bps
+                # Speed from rolling 60-second window (responsive to recent changes).
+                window_dt = max(now_ts - samples[0][0], 1e-6)
+                window_db = max(0, downloaded_state - samples[0][1])
+                rolling_window_bps = window_db / window_dt
+
+                # Cumulative average speed (very stable, long-term trend).
+                cumulative_bps = downloaded_state / elapsed
+
+                # Blend: 75% cumulative (stable) + 25% rolling window (responsive).
+                # This avoids startup lag while maintaining long-window stability.
+                blended_bps = (0.75 * cumulative_bps) + (0.25 * rolling_window_bps)
+
+                # Apply EMA to the blended speed for additional smoothing.
+                prev_ema = speed_metrics["ema_bps"]
+                ema_alpha = 0.20
+                if prev_ema <= 0.0:
+                    ema_bps = blended_bps
                 else:
-                    smoothed_speed_state["fast_bps"] = (
-                        (1.0 - fast_alpha) * prev_fast_bps + fast_alpha * instantaneous_bps
-                    )
+                    ema_bps = ((1.0 - ema_alpha) * prev_ema) + (ema_alpha * blended_bps)
+                speed_metrics["ema_bps"] = max(0.0, ema_bps)
 
-                if prev_stable_bps <= 0.0:
-                    smoothed_speed_state["stable_bps"] = smoothed_speed_state["fast_bps"]
-                else:
-                    smoothed_speed_state["stable_bps"] = (
-                        (1.0 - stable_alpha) * prev_stable_bps + stable_alpha * smoothed_speed_state["fast_bps"]
-                    )
-
-                fast_bps = max(0.0, smoothed_speed_state["fast_bps"])
-                stable_bps = max(0.0, smoothed_speed_state["stable_bps"])
-                speed_status = f"{format_bytes(int(fast_bps))}/s"
-                est_speed_status = f"{format_bytes(int(stable_bps))}/s"
+                speed_status = f"{format_bytes(int(max(0.0, rolling_window_bps)))}/s"
+                est_speed_status = f"{format_bytes(int(max(0.0, ema_bps)))}/s"
 
                 eta_status = "--"
                 if (
                     unknown_transfer_count == 0
                     and total_known_bytes_to_download > 0
-                    and stable_bps > 0.1
-                    and elapsed >= 8.0
-                    and downloaded_state >= 512 * 1024
+                    and ema_bps > 0.1
+                    and elapsed >= 15.0
+                    and downloaded_state >= 2 * 1024 * 1024
                 ):
                     remaining_bytes = max(0, total_known_bytes_to_download - downloaded_state)
-                    raw_eta_seconds = remaining_bytes / stable_bps
 
-                    # Smooth ETA itself and prevent large oscillations per update.
-                    prev_eta = eta_state["seconds"]
+                    # Throughput model ETA (target).
+                    raw_eta_seconds = remaining_bytes / ema_bps
+
+                    # First layer: smooth the target ETA itself.
+                    prev_eta = speed_metrics["eta_seconds"]
                     if prev_eta is None:
-                        smoothed_eta_seconds = raw_eta_seconds
+                        model_eta_seconds = raw_eta_seconds
                     else:
-                        eta_alpha = 0.08
-                        ema_eta = (1.0 - eta_alpha) * prev_eta + eta_alpha * raw_eta_seconds
-                        max_step = max(5.0, prev_eta * 0.03)
-                        lower = prev_eta - max_step
-                        upper = prev_eta + max_step
-                        smoothed_eta_seconds = min(max(ema_eta, lower), upper)
+                        max_change = max(2.0, prev_eta * 0.03)
+                        lower = max(0.0, prev_eta - max_change)
+                        upper = prev_eta + max_change
+                        model_eta_seconds = min(max(raw_eta_seconds, lower), upper)
 
-                    eta_state["seconds"] = smoothed_eta_seconds
-                    remaining_seconds = int(max(0.0, smoothed_eta_seconds))
+                    speed_metrics["eta_seconds"] = model_eta_seconds
+
+                    # Second layer: display ETA is a real countdown with small corrections
+                    # toward the model ETA. This prevents jumps and avoids counting up.
+                    prev_display_eta = speed_metrics["eta_display_seconds"]
+                    if prev_display_eta is None:
+                        display_eta_seconds = model_eta_seconds
+                    else:
+                        # Base behavior: countdown in wall-clock time.
+                        display_eta_seconds = max(0.0, prev_display_eta - emit_dt)
+
+                        # Slow correction toward model ETA (minor nudges only).
+                        error = model_eta_seconds - display_eta_seconds
+                        if error > 0.0:
+                            # If model is higher, allow only tiny upward correction.
+                            correction = min(error, 0.20 * emit_dt)
+                        else:
+                            # If model is lower, allow slightly stronger downward correction.
+                            correction = max(error, -0.60 * emit_dt)
+                        display_eta_seconds += correction
+
+                        # Hard per-update bounds to prevent visible jumps.
+                        min_allowed = max(0.0, prev_display_eta - (1.4 * emit_dt))
+                        max_allowed = prev_display_eta + (0.3 * emit_dt)
+                        display_eta_seconds = min(max(display_eta_seconds, min_allowed), max_allowed)
+
+                    speed_metrics["eta_display_seconds"] = display_eta_seconds
+                    remaining_seconds = int(max(0.0, display_eta_seconds))
                     hours = remaining_seconds // 3600
                     minutes = (remaining_seconds % 3600) // 60
                     seconds = remaining_seconds % 60
                     eta_status = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                else:
+                    speed_metrics["eta_seconds"] = None
+                    speed_metrics["eta_display_seconds"] = None
 
                 status = (
-                    f"Downloading {idx_state}/{total_state} | File: {file_status} | "
-                    f"Total: {total_status} | Speed: {speed_status} | Est: {est_speed_status} | ETA: {eta_status}"
+                    f"Files: {completed_state}/{total_state} (active: {active_workers_state}) | "
+                    f"Total: {total_status} | Current: {speed_status} | Avg: {est_speed_status} | ETA: {eta_status}"
                 )
                 self.ui_queue.put(("progress_value", progress_value, status))
 
@@ -1708,20 +2081,34 @@ class DownloaderApp(tk.Tk):
                         "extracted_paths": [],
                         "errors": [],
                     }
+                    worker_registered = False
                     
                     try:
+                        with self.speed_state_lock:
+                            speed_state["active_workers"] += 1
+                        worker_registered = True
                         self._raise_if_cancelled()
                         
                         # Check for existing DLT counterpart
                         existing_dlt_counterpart = get_single_file_dlt_counterpart_path(file_name, output_dir)
                         if existing_dlt_counterpart is not None and existing_dlt_counterpart.exists():
-                            result["skipped"] += 1
-                            result["extracted_paths"].append(existing_dlt_counterpart)
-                            self.log(
-                                f"[{idx}/{len(matches)}] Skipped compressed file because matching DLT exists: "
-                                f"{existing_dlt_counterpart.name}"
-                            )
-                            return result
+                            if is_valid_dlt_file(existing_dlt_counterpart):
+                                result["skipped"] += 1
+                                result["extracted_paths"].append(existing_dlt_counterpart)
+                                self.log(
+                                    f"[{idx}/{total_files}] Skipped compressed file because matching DLT exists: "
+                                    f"{existing_dlt_counterpart.name}"
+                                )
+                                return result
+                            else:
+                                self.log(
+                                    f"[{idx}/{total_files}] Found stray/invalid path at expected DLT location "
+                                    f"(removing and re-extracting): {existing_dlt_counterpart}"
+                                )
+                                try:
+                                    remove_stray_path(existing_dlt_counterpart)
+                                except OSError as cleanup_exc:
+                                    self.log(f"Could not remove stray path {existing_dlt_counterpart}: {cleanup_exc}")
                         
                         # Determine path and existing state
                         local_path = output_dir / file_name
@@ -1730,76 +2117,130 @@ class DownloaderApp(tk.Tk):
                         existing_is_archive = local_exists and is_archive_file(local_path)
                         resume_offset = 0
                         needs_download = True
-                        archive_candidate = (file_name.lower().endswith(".zip") or 
-                                            file_name.lower().endswith(".zst") or
-                                            file_name.lower().endswith(".gz") or
-                                            file_name.lower().endswith(".bz2") or
-                                            file_name.lower().endswith(".xz") or
-                                            file_name.lower().endswith(".tar") or
-                                            file_name.lower().endswith(".rar") or
-                                            file_name.lower().endswith(".7z") or
-                                            existing_is_archive)
+                        archive_candidate = is_archive_candidate_name(file_name) or existing_is_archive
                         
                         # Check skip_existing logic
                         if skip_existing and local_exists:
                             if remote_size is not None and local_size < remote_size:
                                 resume_offset = local_size
                                 self.log(
-                                    f"[{idx}/{len(matches)}] Resuming partial file: {file_name} "
+                                    f"[{idx}/{total_files}] Resuming partial file: {file_name} "
                                     f"({format_bytes(local_size)} already present)"
                                 )
                             elif remote_size is not None and local_size == remote_size:
                                 if archive_candidate:
                                     needs_download = False
-                                    self.log(f"[{idx}/{len(matches)}] Using existing archive: {local_path}")
+                                    self.log(f"[{idx}/{total_files}] Using existing archive: {local_path}")
                                 else:
                                     result["skipped"] += 1
                                     if local_path.suffix.lower() == ".dlt":
                                         result["extracted_paths"].append(local_path)
-                                    self.log(f"[{idx}/{len(matches)}] Skipped existing: {local_path}")
+                                    self.log(f"[{idx}/{total_files}] Skipped existing: {local_path}")
                                     return result
                             else:
                                 if archive_candidate:
                                     needs_download = False
-                                    self.log(f"[{idx}/{len(matches)}] Using existing archive: {local_path}")
+                                    self.log(f"[{idx}/{total_files}] Using existing archive: {local_path}")
                                 else:
                                     result["skipped"] += 1
                                     if local_path.suffix.lower() == ".dlt":
                                         result["extracted_paths"].append(local_path)
-                                    self.log(f"[{idx}/{len(matches)}] Skipped existing: {local_path}")
+                                    self.log(f"[{idx}/{total_files}] Skipped existing: {local_path}")
                                     return result
                         
                         if not skip_existing and local_path.exists():
                             local_path = ensure_unique_path(local_path)
                         
                         self.log(
-                            f"[{idx}/{len(matches)}] {'Downloading' if needs_download else 'Processing existing archive'}: {file_name}"
+                            f"[{idx}/{total_files}] {'Downloading' if needs_download else 'Processing existing archive'}: {file_name}"
                         )
-                        
-                        # Update speed state for this worker
-                        with self.speed_state_lock:
-                            speed_state["idx"] = idx
-                            speed_state["file_downloaded"] = 0
-                            speed_state["file_target"] = None if remote_size is None else max(0, remote_size - resume_offset)
                         
                         # Download if needed
                         if needs_download:
-                            def on_chunk(chunk_len):
-                                # Update both speed_state counters under single lock for thread safety
-                                with self.speed_state_lock:
-                                    speed_state["downloaded_bytes"] += chunk_len
-                                    speed_state["file_downloaded"] += chunk_len
-                            
-                            download_file(
-                                file_url,
-                                local_path,
-                                on_chunk=on_chunk,
-                                retries=None,
-                                resume_offset=resume_offset,
-                                cancel_event=self.cancel_event,
-                                on_timeout_retry=lambda msg, i=idx: self.log(f"[{i}/{len(matches)}] {msg}"),
-                            )
-                            result["downloaded"] += 1
+                            if azure_fs is not None:
+                                # Azure download: resumable retries from a .part file for transient socket/read timeouts.
+                                temp_path = local_path.with_name(local_path.name + ".part")
+
+                                # If we previously started this file, resume from .part.
+                                if resume_offset > 0 and local_path.exists() and not temp_path.exists():
+                                    try:
+                                        local_path.replace(temp_path)
+                                    except OSError:
+                                        pass
+
+                                partial_size = get_local_file_size(temp_path) if temp_path.exists() else 0
+                                if remote_size is not None and partial_size > remote_size:
+                                    temp_path.unlink(missing_ok=True)
+                                    partial_size = 0
+
+                                try:
+                                    attempts = 0
+                                    while True:
+                                        self._raise_if_cancelled()
+                                        try:
+                                            with azure_fs.open(file_url, "rb") as source, temp_path.open("ab") as target:
+                                                if partial_size > 0:
+                                                    try:
+                                                        source.seek(partial_size)
+                                                    except Exception:
+                                                        # Fallback if seek is not supported by stream wrapper.
+                                                        remaining_skip = partial_size
+                                                        while remaining_skip > 0:
+                                                            skip_chunk = source.read(min(IO_CHUNK_SIZE_AZURE, remaining_skip))
+                                                            if not skip_chunk:
+                                                                raise RuntimeError("Failed to skip to resume offset")
+                                                            remaining_skip -= len(skip_chunk)
+
+                                                while True:
+                                                    self._raise_if_cancelled()
+                                                    chunk = source.read(IO_CHUNK_SIZE_AZURE)
+                                                    if not chunk:
+                                                        break
+                                                    target.write(chunk)
+                                                    partial_size += len(chunk)
+                                                    with self.speed_state_lock:
+                                                        speed_state["downloaded_bytes"] += len(chunk)
+                                            break
+                                        except DownloadCancelledError:
+                                            raise
+                                        except Exception as exc:
+                                            if not is_transient_network_error(exc) or attempts >= AZURE_DOWNLOAD_RETRY_ATTEMPTS:
+                                                raise
+                                            attempts += 1
+                                            wait_s = min(
+                                                AZURE_DOWNLOAD_RETRY_MAX_SECONDS,
+                                                (2 ** min(attempts, 6)) + (time.monotonic() % 2.0),
+                                            )
+                                            self.log(
+                                                f"[{idx}/{total_files}] Azure retry {attempts}/{AZURE_DOWNLOAD_RETRY_ATTEMPTS} "
+                                                f"for {file_name} in {wait_s:.1f}s: {exc}"
+                                            )
+                                            if self.cancel_event.wait(wait_s):
+                                                raise DownloadCancelledError("Download canceled by user.")
+
+                                    temp_path.replace(local_path)
+                                    result["downloaded"] += 1
+                                except DownloadCancelledError:
+                                    raise
+                                except Exception as exc:
+                                    # Keep partial file so next run can resume rather than restart.
+                                    raise RuntimeError(f"Azure download failed for {file_name}: {exc}") from exc
+                            else:
+                                # HTTP download: manual retry/resume logic
+                                def on_chunk(chunk_len):
+                                    with self.speed_state_lock:
+                                        speed_state["downloaded_bytes"] += chunk_len
+
+                                download_file(
+                                    file_url,
+                                    local_path,
+                                    on_chunk=on_chunk,
+                                    retries=None,
+                                    resume_offset=resume_offset,
+                                    cancel_event=self.cancel_event,
+                                    on_timeout_retry=lambda msg, i=idx: self.log(f"[{i}/{total_files}] {msg}"),
+                                )
+                                result["downloaded"] += 1
                         
                         self._raise_if_cancelled()
                         emit_speed_update()
@@ -1811,18 +2252,18 @@ class DownloaderApp(tk.Tk):
                             try:
                                 is_archive_by_content = is_archive_file(local_path)
                             except Exception as archive_check_exc:
-                                self.log(f"[{idx}/{len(matches)}] Error checking if file is archive: {archive_check_exc}")
+                                self.log(f"[{idx}/{total_files}] Error checking if file is archive: {archive_check_exc}")
                         
                         is_archive = archive_candidate or is_archive_by_content
                         
                         self.log(
-                            f"[{idx}/{len(matches)}] File check: name={file_name}, "
-                            f"exists={file_exists}, is_archive_format={any(file_name.lower().endswith(ext) for ext in ['.zip', '.zst', '.gz', '.bz2', '.xz', '.tar', '.rar', '.7z'])}, "
+                            f"[{idx}/{total_files}] File check: name={file_name}, "
+                            f"exists={file_exists}, is_archive_format={is_archive_candidate_name(file_name)}, "
                             f"is_archive_content={is_archive_by_content}, is_archive={is_archive}"
                         )
                         
                         if is_archive and file_exists:
-                            self.log(f"[{idx}/{len(matches)}] Detected archive. Extracting DLT files...")
+                            self.log(f"[{idx}/{total_files}] Detected archive. Extracting DLT files...")
                             try:
                                 extracted_now, skipped_now, found_now, extracted_paths = extract_dlt_files_from_archive(
                                     local_path, output_dir, skip_existing
@@ -1831,15 +2272,15 @@ class DownloaderApp(tk.Tk):
                                 result["skipped"] += skipped_now
                                 result["extracted_paths"].extend(extracted_paths)
                                 if found_now == 0:
-                                    self.log(f"[{idx}/{len(matches)}] No .dlt files found inside archive: {local_path.name}")
+                                    self.log(f"[{idx}/{total_files}] No .dlt files found inside archive: {local_path.name}")
                                 else:
                                     self.log(
-                                        f"[{idx}/{len(matches)}] Extracted {extracted_now} DLT file(s), "
+                                        f"[{idx}/{total_files}] Extracted {extracted_now} DLT file(s), "
                                         f"found {found_now} total in archive (skipped existing: {skipped_now})"
                                     )
                             except Exception as extract_exc:
                                 result["errors"].append(f"Extraction failed: {extract_exc}")
-                                self.log(f"[{idx}/{len(matches)}] Error extracting archive {local_path.name}: {extract_exc}")
+                                self.log(f"[{idx}/{total_files}] Error extracting archive {local_path.name}: {extract_exc}")
                                 self.log(f"Extraction error details: {traceback.format_exc()[:500]}")
                             
                             # Clean up archive file
@@ -1847,30 +2288,34 @@ class DownloaderApp(tk.Tk):
                                 if local_path.exists():
                                     local_path.unlink(missing_ok=True)
                                     result["removed_archives"] += 1
-                                    self.log(f"[{idx}/{len(matches)}] Removed archive file: {local_path.name}")
+                                    self.log(f"[{idx}/{total_files}] Removed archive file: {local_path.name}")
                                 else:
-                                    self.log(f"[{idx}/{len(matches)}] Archive file already missing: {local_path.name}")
+                                    self.log(f"[{idx}/{total_files}] Archive file already missing: {local_path.name}")
                             except OSError as unlink_exc:
                                 self.log(f"Could not remove archive {local_path.name}: {unlink_exc}")
                         elif file_exists and local_path.suffix.lower() == ".dlt":
                             result["extracted_paths"].append(local_path)
-                            self.log(f"[{idx}/{len(matches)}] Tracking DLT file for combine: {local_path.name}")
+                            self.log(f"[{idx}/{total_files}] Tracking DLT file for combine: {local_path.name}")
                         else:
                             suffix = local_path.suffix.lower() if file_exists else "n/a"
-                            self.log(f"[{idx}/{len(matches)}] File not processed (not archive, not .dlt): {file_name} (suffix: {suffix})")
+                            self.log(f"[{idx}/{total_files}] File not processed (not archive, not .dlt): {file_name} (suffix: {suffix})")
                         
                         self._raise_if_cancelled()
                         emit_speed_update()
                         
                     except Exception as worker_exc:
                         result["errors"].append(str(worker_exc))
-                        self.log(f"[{idx}/{len(matches)}] Unexpected error processing {file_name}: {worker_exc}")
+                        self.log(f"[{idx}/{total_files}] Unexpected error processing {file_name}: {worker_exc}")
                         self.log(f"Error details: {traceback.format_exc()[:500]}")
+                    finally:
+                        if worker_registered:
+                            with self.speed_state_lock:
+                                speed_state["active_workers"] = max(0, speed_state["active_workers"] - 1)
                     
                     return result
                 
                 # Launch parallel downloads using ThreadPoolExecutor
-                with concurrent.futures.ThreadPoolExecutor(max_workers=PARALLEL_DOWNLOADS) as executor:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_workers) as executor:
                     futures = [
                         executor.submit(process_single_file, (idx, file_name, file_url, _day, remote_size))
                         for idx, (file_name, file_url, _day, remote_size) in enumerate(sized_matches, start=1)
@@ -1888,6 +2333,7 @@ class DownloaderApp(tk.Tk):
                                 removed_archives += result["removed_archives"]
                                 skipped_existing += result["skipped"]
                                 dlt_files_for_combine.extend(result["extracted_paths"])
+                                speed_state["completed_files"] += 1
                         except Exception as result_exc:
                             self.log(f"Error collecting result from parallel download: {result_exc}")
             finally:
@@ -1896,7 +2342,20 @@ class DownloaderApp(tk.Tk):
 
             self._raise_if_cancelled()
             self.log(f"Preparing combine phase: {len(dlt_files_for_combine)} total DLT file(s) tracked.")
-            unique_dlt_paths = sorted({p.resolve() for p in dlt_files_for_combine if p.exists()}, key=lambda p: p.name.lower())
+            resolved_candidates = sorted({p.resolve() for p in dlt_files_for_combine if p.exists()}, key=lambda p: p.name.lower())
+            unique_dlt_paths = [p for p in resolved_candidates if is_valid_dlt_file(p)]
+            invalid_paths = [p for p in resolved_candidates if not is_valid_dlt_file(p)]
+            if invalid_paths:
+                self.log(
+                    f"Ignoring {len(invalid_paths)} stray/invalid path(s) that are not real DLT files "
+                    f"(directories or empty placeholders left by a previous run): "
+                    + ", ".join(p.name for p in invalid_paths)
+                )
+                for stray in invalid_paths:
+                    try:
+                        remove_stray_path(stray)
+                    except OSError as cleanup_exc:
+                        self.log(f"Could not remove stray path {stray}: {cleanup_exc}")
             self.log(f"Found {len(unique_dlt_paths)} existing DLT file(s) ready to combine.")
             combined_file_path = None
             if combine_dlt and unique_dlt_paths:
@@ -1924,7 +2383,7 @@ class DownloaderApp(tk.Tk):
                 f"Completed. Downloaded: {downloaded}, "
                 f"Extracted DLT: {extracted_dlt}, "
                 f"Removed archives: {removed_archives}, "
-                f"Skipped existing: {skipped_existing}, Total matched: {len(matches)}, "
+                f"Skipped existing: {skipped_existing}, Total matched: {total_files}, "
                 f"Combined file: {combined_file_path.name if combined_file_path else 'not created'}"
             )
             self.log(summary)

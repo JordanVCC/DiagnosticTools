@@ -1,0 +1,2 @@
+# Folders mirrored into knowledge/sources by sync_knowledge.py (one per line).
+C:\Users\JHARVEY\OneDrive - Volvo Cars\Documents\01_Resources\04_DatasheetsAndSpecification

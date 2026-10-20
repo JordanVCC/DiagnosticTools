@@ -30,6 +30,21 @@ python nuc_dlt_window_downloader.py
 
 ## How to Use
 
+For recent logs, click **Sign in to NUC Drive** and complete your company sign-in
+in the Chromium window that opens. The tool then uses the same NUC Drive
+listings as the website, including logs not yet available in Azure archive storage.
+Sign-in has a three-minute timeout. Session cookies are kept only in memory and
+are discarded when the tool exits. Sign in again after restarting the tool or
+if the session expires. The Windows launcher installs `playwright` and its bundled
+Chromium browser. For direct Python launches, install the browser once with
+`python -m playwright install chromium`.
+
+If Azure finds no matches, the download now opens the Chromium sign-in window
+automatically and retries the same window using NUC Drive. A failed sign-in is
+shown in an error dialog, rather than silently leaving the download on Azure.
+Leave the sign-in window open until the tool closes it automatically after
+verifying the session. Closing it yourself can interrupt authentication.
+
 1. **Enter VIN**: Type or select a VIN number from the searchable list
 2. **Choose Variant**: Select HPA or HPB
 3. **Set Time Window**: 
@@ -81,6 +96,11 @@ pip install -r requirements.txt
 - Partially downloaded files will be resumed next time
 
 **No files found?**
+- Click **Sign in to NUC Drive** and retry. Azure mode reads only
+   `raw-archive-storage/data_nuc/public`, which can lag behind the drive website.
+- Browser sign-in in your usual browser is not automatically shared with Python.
+- Complete sign-in in the Chromium window opened by this running tool. Signing in
+   in another browser or a previous tool session does not establish its session.
 - Verify VIN is correct and in the list
 - Check date range matches available logs
 - Ensure variant (HPA/HPB) is correct
@@ -92,6 +112,12 @@ pip install -r requirements.txt
 - Verify output folder has write permissions
 
 ## Support
+
+See [FUNCTION_DEFINITIONS.md](FUNCTION_DEFINITIONS.md) for function contracts.
+Run focused offline discovery tests with:
+```bash
+python -m unittest discover -s _support -p test_discovery.py -v
+```
 
 For developers and technical details, see the `_support/` folder:
 - `BUG_FIXES_SUMMARY.md` - Code quality and improvements

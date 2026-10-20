@@ -15,7 +15,7 @@ The following fields are copied from the selected Feature automatically for ever
 
 ## 2. Environment Variables
 
-Set your PATs securely in config.py:
+Keep PATs out of `config.py`. Set environment variables for the current session:
 
 ```powershell
 $env:CONFLUENCE_PAT="your_confluence_pat"
@@ -23,6 +23,15 @@ $env:VIRA_PAT="your_vira_pat"
 ```
 
 These you can get from confluence and Vira settings respectively.
+
+Alternatively, copy `secrets.example.json` to `secrets.local.json` in this folder
+and enter the PATs there. `secrets.local.json` is ignored by Git. Environment
+variables take precedence over the local file. Missing or invalid credentials
+stop the script before any requests are made. Existing local credentials were
+migrated to this file during the repository cleanup.
+
+Never commit the local file or real values in the example. Rotate any PAT that
+has previously been committed, since deleting it does not remove Git history.
 
 Optional overrides (defaults are already configured in code):
 
@@ -46,3 +55,9 @@ Run the code by clicking run in VS Code or run the below command
 ```powershell
 python .\generate_feature_package.py
 ```
+
+## 4. Credential Tests
+
+From the repository root, run `python -m unittest discover -s JiraStoryCreater -p test_config.py -v`.
+Tests use isolated temporary files and fake credentials, without network access.
+See `FUNCTION_DEFINITIONS.md` for the function reference.

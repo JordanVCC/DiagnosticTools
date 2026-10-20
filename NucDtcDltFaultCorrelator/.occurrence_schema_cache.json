@@ -1,0 +1,15 @@
+{
+  "vin_col": "pvin",
+  "dtc_col": "dtc_id",
+  "variant_col": "ecu",
+  "alt_col": "",
+  "ecu_addr_col": "ecuAddr",
+  "ts_col": "vtStart",
+  "ts_dtype_code": "Datetime",
+  "confirmed_col": "Confirmed",
+  "pending_col": "Pending",
+  "test_failed_col": "TestFailedSinceLastClear",
+  "dtc_dict_col": "dtc_dict",
+  "ts20_utc_col": "TS20__UTC",
+  "ts21_utc_col": "TS21__UTC"
+}

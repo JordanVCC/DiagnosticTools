@@ -1,0 +1,5 @@
+azure-identity>=1.17.0
+fsspec>=2024.6.1
+adlfs>=2024.7.0
+polars>=1.7.0
+zstandard>=0.22.0
